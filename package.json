@@ -1,0 +1,39 @@
+{
+  "name": "nurture-timeline",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "server": "tsx watch server/index.ts",
+    "check": "tsc -b --pretty false"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "bcryptjs": "latest",
+    "cookie-parser": "latest",
+    "cors": "latest",
+    "express": "latest",
+    "jsonwebtoken": "latest",
+    "lucide-react": "latest",
+    "pg": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "socket.io": "latest",
+    "socket.io-client": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "latest",
+    "@types/cors": "latest",
+    "@types/jsonwebtoken": "latest",
+    "@types/express": "latest",
+    "@types/node": "latest",
+    "@types/pg": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "tsx": "latest",
+    "typescript": "latest"
+  }
+}

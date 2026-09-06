@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nurture}
+      POSTGRES_USER: ${POSTGRES_USER:-nurture}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nurture_local_only}
+    ports: ["5432:5432"]
+    volumes:
+      - nurture_data:/var/lib/postgresql/data
+      - ./server/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./server/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nurture -d nurture"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  api:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-nurture}:${POSTGRES_PASSWORD:-nurture_local_only}@db:5432/${POSTGRES_DB:-nurture}
+      JWT_SECRET: ${JWT_SECRET:-change-this-before-production-please-use-a-long-random-value}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:8080}
+      APP_URL: ${APP_URL:-http://localhost:8080}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports: ["3001:3001"]
+  web:
+    build:
+      context: .
+      dockerfile: web.Dockerfile
+    depends_on: [api]
+    ports: ["8080:80"]
+volumes:
+  nurture_data:
