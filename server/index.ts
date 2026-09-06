@@ -20,6 +20,15 @@ app.use(cors({ origin: process.env.WEB_ORIGIN ?? "http://localhost:8080", creden
 app.use(cookieParser());
 app.use(express.json());
 
+app.get("/api/health", async (_request, response) => {
+  try {
+    await pool.query("SELECT 1");
+    response.json({ status: "ok" });
+  } catch {
+    response.status(503).json({ status: "unavailable" });
+  }
+});
+
 function sessionFrom(request: Request): Session | null {
   const token = request.cookies.nurture_session as string | undefined;
   if (!token) return null;

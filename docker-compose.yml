@@ -11,7 +11,7 @@ services:
       - ./server/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./server/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nurture -d nurture"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -30,6 +30,11 @@ services:
       db:
         condition: service_healthy
     ports: ["3001:3001"]
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3001/api/health').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
   web:
     build:
       context: .
