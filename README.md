@@ -50,6 +50,79 @@ The production stack is designed for the OVH VPS currently used for this project
 - The production database starts empty. It deliberately does **not** load the local demo seed.
 - OVH automated backups are already enabled. A daily compressed SQL dump provides a second, app-level recovery path.
 
+### How the production system works
+
+```text
+Browser
+  │ https://care.example.com (80 redirects to HTTPS; 443 serves the app)
+  ▼
+Caddy ── private Docker network ──► Nginx / React web container
+                                         │ /api and /socket.io
+                                         ▼
+                                    Express API ──► PostgreSQL named volume
+```
+
+All four containers are in the same private Docker network. Only Caddy has host ports, so the internet cannot directly reach the API on port 3001 or PostgreSQL on port 5432.
+
+#### `docker-compose.prod.yml` — the production stack
+
+This is deliberately separate from `docker-compose.yml`, which remains a convenient local-development stack. The production file does **not** mount `server/seed.sql`, so a new VPS database has no sample people, children, or activity logs.
+
+`db` is the PostgreSQL container. Its data lives in the Docker named volume `nurture_data`, outside the short-lived container filesystem. Rebuilding or replacing the `db` container therefore does not erase real data. `server/schema.sql` is mounted only for PostgreSQL's first initialization of a completely empty volume. Later application schema changes are handled by the API's migration runner.
+
+`api` is the Express and Socket.IO server. It waits for PostgreSQL's health check before starting. On startup, it runs any unapplied SQL migrations and then serves the application. Its `/api/health` endpoint returns `{"status":"ok"}` only after a real `SELECT 1` succeeds against PostgreSQL; Docker uses this endpoint to identify an unhealthy API.
+
+`web` is Nginx serving the built React files. Nginx also forwards `/api/*` and `/socket.io/*` to `api:3001` inside Docker. That means the browser sees one origin (`https://care.example.com`), which keeps cookies and real-time Socket.IO connections simple.
+
+`caddy` is the public edge. It is the only service with `80:80` and `443:443` published to the VPS. Once `APP_DOMAIN` resolves publicly to the VPS and those ports are reachable, Caddy obtains a TLS certificate automatically, redirects HTTP to HTTPS, and renews the certificate before expiry. Its `caddy_data` volume preserves certificate/account data across container replacement; do not delete that volume casually.
+
+Every service has `restart: unless-stopped`. Docker restarts a container after its process crashes and restores it after Docker starts on a reboot, unless you intentionally stopped it yourself.
+
+#### `Caddyfile` — HTTPS and reverse proxy rules
+
+`{$APP_DOMAIN}` reads the domain from the VPS `.env` file. It is intentionally not hard-coded, so the same code works for any final domain. `encode zstd gzip` compresses text responses when the browser supports it. `reverse_proxy web:80` sends every incoming HTTPS request to the private web container. The web container then routes static files, API requests, and WebSocket upgrades to the appropriate internal service.
+
+There is no manual certificate renewal task. The DNS record and open ports are the important prerequisites. If DNS is wrong or port 80/443 is blocked, Caddy cannot prove domain ownership and certificate issuance will fail.
+
+#### `deploy/nurture.service` — boot-time recovery
+
+This is a small `systemd` unit, Ubuntu's service manager. It does not run the Node application itself. Instead, once Docker is ready during a VPS boot, it runs:
+
+```sh
+docker compose --env-file .env -f docker-compose.prod.yml up -d --build --remove-orphans
+```
+
+`up -d` creates or starts the required containers in the background. `--build` ensures the image matches the checked-out code. `--remove-orphans` removes containers from an older Compose definition that no longer belong to Nurture. `RemainAfterExit=yes` records that the desired stack was started even though the command itself finishes quickly.
+
+This gives two layers of recovery: Docker handles an individual container crash; systemd starts the desired Compose stack when the whole VPS reboots. Useful commands are:
+
+```sh
+sudo systemctl status nurture
+sudo systemctl restart nurture
+sudo journalctl -u nurture -n 100 --no-pager
+docker compose --env-file .env -f docker-compose.prod.yml ps
+```
+
+#### `scripts/backup-database.sh` — logical database backups
+
+OVH automated backups protect the VPS as a server-level recovery option. This script adds a database-specific backup: it runs PostgreSQL's `pg_dump` inside the live `db` container, compresses the SQL stream with `gzip`, and writes a file such as `nurture-2026-09-07T00-15-00Z.sql.gz` to `/opt/nurture/backups`.
+
+The script loads the VPS `.env` only to know the database name and user; it does not print credentials. It then deletes dumps older than 14 days. The cron entry runs it daily at 03:15 UTC. The backup directory is intentionally protected with `chmod 700` because dumps contain all care logs, notes, and user accounts.
+
+This is a **logical** backup: it can be restored into PostgreSQL even when restoring a whole VM snapshot would be inconvenient. It is not off-site by itself, because the dump remains on the same VPS. For the first release, OVH's automated backup is the off-server recovery layer. If the app becomes important enough, the next upgrade should encrypt and copy these dumps to separate storage.
+
+#### `scripts/deploy.sh` — safe application updates
+
+This script first runs `git pull --ff-only`. “Fast-forward only” refuses to merge unexpected server-side edits, rather than silently creating a merge commit. It then runs Compose with `--build --remove-orphans`, rebuilding only images whose inputs changed and preserving the PostgreSQL and Caddy volumes. Finally it prints the container status.
+
+The API migration runner applies new SQL migration files once and records them in `schema_migration`, so a normal deploy updates code and database structure together. A deploy does not deliberately wipe data or seed demo data. It is not a zero-downtime deployment: the API/web container may restart briefly. If a bad release is deployed, revert the Git commit, then run `./scripts/deploy.sh` again. Database migrations should therefore be designed to remain compatible with a rollback.
+
+#### Secrets and boundaries
+
+The VPS `.env` contains the JWT secret, database password, and optionally Google OAuth secret. It must never be committed or copied into a container image. `.gitignore` prevents Git from tracking it, and `.dockerignore` keeps it out of Docker build context. `.env.production.example` is safe to commit because it contains placeholders only.
+
+This is a robust single-VPS deployment, not high availability: if OVH's entire region is unavailable, the app is unavailable until the server or a backup is restored. That is appropriate for the small initial user count and can later evolve into managed database backups, off-site dumps, and a second server if needed.
+
 ### 1. Prepare DNS and Google OAuth
 
 Choose a domain or subdomain, for example `care.example.com`, and create an **A record** pointing it to the VPS IPv4 address. Wait until `dig +short care.example.com` returns that address. Caddy cannot issue an HTTPS certificate until DNS resolves publicly and ports 80/443 reach the VPS.
