@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "server": "tsx watch server/index.ts",
+    "server": "node --watch --env-file=.env --import tsx server/index.ts",
+    "migrate": "node --env-file=.env --import tsx server/migrate.ts",
     "check": "tsc -b --pretty false"
   },
   "dependencies": {
@@ -27,12 +28,13 @@
   "devDependencies": {
     "@types/cookie-parser": "latest",
     "@types/cors": "latest",
-    "@types/jsonwebtoken": "latest",
     "@types/express": "latest",
+    "@types/jsonwebtoken": "latest",
     "@types/node": "latest",
     "@types/pg": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "nodemon": "^3.1.14",
     "tsx": "latest",
     "typescript": "latest"
   }

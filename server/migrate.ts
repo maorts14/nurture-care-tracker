@@ -1,8 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Pool } from "pg";
-
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+import { pool } from "./database.js";
 const migrationsDir = join(process.cwd(), "server", "migrations");
 
 async function migrate() {

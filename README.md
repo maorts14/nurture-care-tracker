@@ -5,17 +5,19 @@ Shared child-care tracking with a persistent PostgreSQL timeline, real-time upda
 ## Run locally
 
 ```powershell
-docker compose up --build -d
+docker compose up -d --build --wait
 ```
 
-Open http://localhost:8080.
+Open http://localhost:5173 after Docker reports the stack is healthy. Docker runs PostgreSQL, the API, and Vite locally. The API uses polling so it reliably reloads after changes in `server/` on Windows bind mounts; Vite reloads the browser after frontend edits. Node debugging is exposed only in the development stack on port 9229.
 
 Seeded local accounts:
 
 - `alex@nurture.local` / `nurture-demo` (owner)
 - `maya@nurture.local` / `nurture-demo` (caregiver)
 
-The API is exposed at `http://localhost:3001` and PostgreSQL at `localhost:5432` for local development. Stop the stack with `docker compose down`. Add `-v` only when you intentionally want to erase the local database volume and rerun the seed data.
+The API is exposed at `http://localhost:3001`, PostgreSQL at `localhost:5432`, and the Node inspector at `localhost:9229` for local development. Stop the local stack with `docker compose down`. Add `-v` only when you intentionally want to erase the local database volume and rerun the seed data.
+
+In VS Code, run **Tasks: Run Task → App: start development**. For breakpoints, choose **Run and Debug → Debug Nurture locally**. The saved configuration starts the local development containers, attaches the API debugger, and opens the Vite app. Production uses `docker-compose.prod.yml`, which has no watch mode or exposed debugger.
 
 ## What is working
 
@@ -38,7 +40,7 @@ The local `.env` holds the generated local JWT/database credentials and localhos
 https://your-domain.example/api/auth/google/callback
 ```
 
-For local development, use `http://localhost:8080/api/auth/google/callback` and update `APP_URL` if you change the local address.
+For local development, use `http://localhost:5173/api/auth/google/callback` and update `APP_URL` if you change the local address.
 
 ## OVH VPS deployment
 
@@ -66,7 +68,7 @@ All four containers are in the same private Docker network. Only Caddy has host 
 
 #### `docker-compose.prod.yml` — the production stack
 
-This is deliberately separate from `docker-compose.yml`, which remains a convenient local-development stack. The production file does **not** mount `server/seed.sql`, so a new VPS database has no sample people, children, or activity logs.
+This is deliberately separate from `docker-compose.yml`, which is the hot-reloading local development stack. The production file does **not** mount `server/seed.sql`, so a new VPS database has no sample people, children, or activity logs.
 
 `db` is the PostgreSQL container. Its data lives in the Docker named volume `nurture_data`, outside the short-lived container filesystem. Rebuilding or replacing the `db` container therefore does not erase real data. `server/schema.sql` is mounted only for PostgreSQL's first initialization of a completely empty volume. Later application schema changes are handled by the API's migration runner.
 

@@ -1,0 +1,31 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attach to Docker API",
+      "type": "node",
+      "request": "attach",
+      "address": "localhost",
+      "port": 9229,
+      "localRoot": "${workspaceFolder}",
+      "remoteRoot": "/app",
+      "preLaunchTask": "App: start development",
+      "restart": true,
+      "sourceMaps": true
+    },
+    {
+      "name": "Open Nurture in Chrome",
+      "type": "pwa-chrome",
+      "request": "launch",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "App: start development"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Debug Nurture locally",
+      "configurations": ["Attach to Docker API", "Open Nurture in Chrome"]
+    }
+  ]
+}

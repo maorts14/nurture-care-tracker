@@ -4,14 +4,13 @@ import cors from "cors";
 import express, { type Request, type Response } from "express";
 import jwt from "jsonwebtoken";
 import { createServer } from "node:http";
-import { Pool } from "pg";
 import { Server } from "socket.io";
 import { usableIntervals } from "./analytics.js";
+import { pool } from "./database.js";
 
 type Session = { userId: string };
 const port = Number(process.env.PORT ?? 3001);
 const secret = process.env.JWT_SECRET ?? "development-only-secret-change-me";
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, { cors: { origin: process.env.WEB_ORIGIN ?? "http://localhost:8080", credentials: true } });
@@ -102,6 +101,13 @@ app.put("/api/children/:childId", async (request, response) => {
   if (!name.trim()) { response.status(400).json({ error: "Child name is required" }); return; }
   const updated = await pool.query("UPDATE child SET name = $1 WHERE id = $2 AND EXISTS (SELECT 1 FROM child_membership WHERE child_id = child.id AND user_id = $3 AND role = 'owner') RETURNING id", [name.trim(), request.params.childId, session.userId]);
   if (updated.rowCount !== 1) { response.status(403).json({ error: "Only a child owner can rename this profile" }); return; }
+  io.to(childRoom(request.params.childId)).emit("timeline:changed");
+  response.status(204).end();
+});
+app.delete("/api/children/:childId", async (request, response) => {
+  const session = requireSession(request, response); if (!session) return;
+  const archived = await pool.query("UPDATE child SET archived_at = now() WHERE id = $1 AND EXISTS (SELECT 1 FROM child_membership WHERE child_id = child.id AND user_id = $2 AND role = 'owner') RETURNING id", [request.params.childId, session.userId]);
+  if (archived.rowCount !== 1) { response.status(403).json({ error: "Only a child owner can delete this profile" }); return; }
   io.to(childRoom(request.params.childId)).emit("timeline:changed");
   response.status(204).end();
 });
