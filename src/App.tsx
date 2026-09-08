@@ -117,60 +117,6 @@ type Panel =
   | "children"
   | null;
 
-const txt = {
-  en: {
-    timeline: "Timeline",
-    insights: "Insights",
-    upcoming: "Upcoming",
-    log: "Log care",
-    manage: "Manage care",
-    notes: "Notes",
-    save: "Save",
-  },
-  he: {
-    timeline: "ציר זמן",
-    insights: "תובנות",
-    upcoming: "הבא",
-    log: "תיעוד טיפול",
-    manage: "ניהול טיפול",
-    notes: "הערות",
-    save: "שמירה",
-  },
-};
-const hebrewLabels: Record<string, string> = {
-  "Last feeding": "האכלה אחרונה",
-  "Next expected": "הצפוי הבא",
-  "from its reminder": "לפי התזכורת",
-  "Care today": "טיפול היום",
-  "live from PostgreSQL": "נתונים חיים",
-  "Care history": "היסטוריית טיפול",
-  Children: "ילדים",
-  "Invite caregiver": "הזמנת מטפל",
-  "Declare care gap": "הכרזת הפסקת טיפול",
-  "Exclude a deliberate tracking break.": "החרגת הפסקה מכוונת מהמעקב.",
-  "QUICK LOG": "תיעוד מהיר",
-  "What happened?": "מה קרה?",
-  When: "מתי",
-  Note: "הערה",
-  "Optional context for everyone": "הקשר אופציונלי לכל המטפלים",
-  Save: "שמירה",
-  "Custom activity": "פעילות מותאמת",
-  "Passive reminder": "תזכורת פסיבית",
-  Reminder: "תזכורת",
-  "Create activity": "יצירת פעילות",
-  "Add a field": "הוספת שדה",
-  "Save reminder": "שמירת תזכורת",
-  Comments: "תגובות",
-  "Save comment": "שמירת תגובה",
-  "Delete this care record": "מחיקת רשומת טיפול",
-  "Shared with caregivers": "משותף עם מטפלים",
-  "Only me": "רק אני",
-  "New note": "הערה חדשה",
-  "Save note": "שמירת הערה",
-  Edit: "עריכה",
-  Delete: "מחיקה",
-  "Care gaps protect your routine data.": "הפסקות טיפול מגינות על נתוני השגרה.",
-};
 const localDateTime = () => {
   const date = new Date();
   date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
@@ -181,6 +127,17 @@ const clock = (value: string, locale = "en") =>
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
+const timeZoneLabel = (timeZone: string, locale: User["locale"]) => {
+  if (locale === "en") return timeZone;
+  return (
+    new Intl.DateTimeFormat("he-IL", {
+      timeZone,
+      timeZoneName: "long",
+    })
+      .formatToParts(new Date())
+      .find((part) => part.type === "timeZoneName")?.value ?? timeZone
+  );
+};
 const icon = (kind: Activity["kind"]) =>
   kind === "feeding" ? (
     <Utensils size={17} />
@@ -238,7 +195,8 @@ export default function App() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [comment, setComment] = useState("");
   const [inviteUrl, setInviteUrl] = useState("");
-  const locale = user?.locale ?? "en";
+  const locale: User["locale"] =
+    user?.locale ?? (navigator.language.startsWith("he") ? "he" : "en");
   const t = (text: string) => translate(locale, text);
   const owner = dash?.role === "owner";
   const write = dash?.role !== "viewer";
@@ -319,38 +277,15 @@ export default function App() {
     else setDash(null);
   }, [child?.id]);
   useEffect(() => {
+    document.documentElement.lang = locale;
+    document.documentElement.dir = locale === "he" ? "rtl" : "ltr";
     if (!user) return;
-    document.documentElement.lang = user.locale;
-    document.documentElement.dir = user.locale === "he" ? "rtl" : "ltr";
     const token = new URLSearchParams(location.search).get("invite");
     if (token)
       api(`/api/invitations/${token}/accept`, { method: "POST" })
         .then(load)
         .catch((cause: Error) => setError(cause.message));
-  }, [user?.id, user?.locale]);
-  useEffect(() => {
-    if (user?.locale !== "he") return;
-    const walker = document.createTreeWalker(
-      document.body,
-      NodeFilter.SHOW_TEXT,
-    );
-    const texts: Text[] = [];
-    while (walker.nextNode()) texts.push(walker.currentNode as Text);
-    texts.forEach((text) => {
-      const source = text.data.trim();
-      const translation = hebrewLabels[source] ?? translate("he", source);
-      if (translation)
-        text.data = text.data.replace(text.data.trim(), translation);
-    });
-  }, [
-    user?.locale,
-    page,
-    panel,
-    logOpen,
-    selected?.id,
-    dash?.timeline.length,
-    notes.length,
-  ]);
+  }, [user?.id, locale]);
   useEffect(() => {
     if (!child || !user) return;
     const socket = io({ withCredentials: true });
@@ -391,11 +326,6 @@ export default function App() {
             ? (field.options[0] ?? "")
             : "";
     });
-    if (current.kind === "feeding") {
-      defaults.amount = "120";
-      defaults.method = "Bottle";
-    }
-    if (current.kind === "diaper") defaults.type = "Wet";
     setValues(defaults);
   }, [current?.id]);
   async function login(event: FormEvent) {
@@ -408,7 +338,7 @@ export default function App() {
             email,
             password,
             displayName: name,
-            locale: "en",
+            locale,
           }),
         });
       else
@@ -739,19 +669,22 @@ export default function App() {
     setHomeOpen(false);
     navigate("/", true);
   };
-  if (loading) return <div className="loading-screen">Loading Nurture…</div>;
+  if (loading)
+    return <div className="loading-screen">{t("Loading Nurture…")}</div>;
   if (!user)
     return (
       <div className="sign-in-shell">
         <form className="sign-in" onSubmit={login}>
           <NurtureBrand />
-          <p className="eyebrow">SHARED CHILD CARE</p>
+          <p className="eyebrow">{t("SHARED CHILD CARE")}</p>
           <h1>
-            {auth === "sign-in" ? "Welcome back." : "Start your family space."}
+            {auth === "sign-in"
+              ? t("Welcome back.")
+              : t("Start your family space.")}
           </h1>
           {auth === "register" && (
             <label>
-              Name
+              {t("Name")}
               <input
                 value={name}
                 onChange={(event) => setName(event.target.value)}
@@ -760,7 +693,7 @@ export default function App() {
             </label>
           )}
           <label>
-            Email
+            {t("Email")}
             <input
               value={email}
               onChange={(event) => setEmail(event.target.value)}
@@ -769,7 +702,7 @@ export default function App() {
             />
           </label>
           <label>
-            Password
+            {t("Password")}
             <input
               value={password}
               onChange={(event) => setPassword(event.target.value)}
@@ -780,7 +713,7 @@ export default function App() {
           </label>
           {error && <p className="form-error">{error}</p>}
           <button className="primary submit">
-            {auth === "sign-in" ? "Sign in" : "Create account"}
+            {auth === "sign-in" ? t("Sign in") : t("Create account")}
           </button>
           <button
             className="text-button auth-switch"
@@ -788,13 +721,13 @@ export default function App() {
             onClick={() => setAuth(auth === "sign-in" ? "register" : "sign-in")}
           >
             {auth === "sign-in"
-              ? "Need an account? Register"
-              : "Already have an account? Sign in"}
+              ? t("Need an account? Register")
+              : t("Already have an account? Sign in")}
           </button>
           <a className="google-link" href="/api/auth/google">
-            Continue with Google
+            {t("Continue with Google")}
           </a>
-          <small>Local sample: alex@nurture.local / nurture-demo</small>
+          <small>{t("Local sample:")} alex@nurture.local / nurture-demo</small>
         </form>
       </div>
     );
@@ -839,7 +772,8 @@ export default function App() {
         onHome={() => navigate("/children")}
       />
     );
-  if (!dash) return <div className="loading-screen">Loading family space…</div>;
+  if (!dash)
+    return <div className="loading-screen">{t("Loading family space…")}</div>;
   if ((() => page === "insights")())
     return (
       <AnalyticsView
@@ -852,6 +786,7 @@ export default function App() {
   if (panel === "reminder")
     return (
       <RemindersPage
+        locale={user.locale}
         reminders={dash.reminders}
         activities={dash.activities}
         owner={owner}
@@ -865,6 +800,7 @@ export default function App() {
   if (panel === "notes")
     return (
       <NotesPage
+        locale={user.locale}
         notes={notes}
         userId={user.id}
         write={write}
@@ -877,6 +813,7 @@ export default function App() {
   if ((() => selected)())
     return (
       <CommentsPage
+        locale={user.locale}
         item={selected!}
         comments={comments}
         comment={comment}
@@ -906,7 +843,7 @@ export default function App() {
           <span className="avatar">{child.name[0]}</span>
           <span>
             <strong>{child.name}</strong>
-            <small>{child.timezone}</small>
+            <small>{timeZoneLabel(child.timezone, user.locale)}</small>
           </span>
           <select
             value={child.id}
@@ -958,7 +895,7 @@ export default function App() {
           />
           <SidebarAccount
             displayName={user.display_name}
-            detail={dash.role}
+            detail={t(dash.role)}
             signOutLabel={t("Sign out")}
             onSignOut={signOut}
           />
@@ -1024,7 +961,6 @@ export default function App() {
             <strong>
               {events.length} {t("events")}
             </strong>
-            <span>{t("live from PostgreSQL")}</span>
           </div>
         </section>
         <UpcomingList
@@ -1084,6 +1020,7 @@ export default function App() {
       )}
       {logOpen && (
         <LogModal
+          locale={user.locale}
           activity={current}
           activities={dash.activities}
           at={at}
@@ -1099,6 +1036,7 @@ export default function App() {
       )}
       {panel && (
         <ManageModal
+          locale={user.locale}
           panel={panel}
           activities={dash.activities}
           children={children}
@@ -1145,10 +1083,10 @@ function UpcomingList({
     <section className="upcoming-list" aria-label={t("Upcoming care")}>
       <div className="section-head upcoming-list-head">
         <div>
-          <h2>Upcoming</h2>
+          <h2>{t("Upcoming")}</h2>
         </div>
         <button className="text-button" onClick={onOpen}>
-          Manage reminders <Plus size={15} />
+          {t("Manage reminders")} <Plus size={15} />
         </button>
       </div>
       {reminders.length ? (
@@ -1167,7 +1105,7 @@ function UpcomingList({
                 <p>
                   {reminder.kind === "one_time" && reminder.scheduled_for
                     ? clock(reminder.scheduled_for, locale)
-                    : `every ${Math.round((reminder.interval_minutes ?? 0) / 60)}h`}
+                    : `${t("Every")} ${Math.round((reminder.interval_minutes ?? 0) / 60)} ${t("hours after activity")}`}
                 </p>
               </div>
               <button
@@ -1191,17 +1129,17 @@ function UpcomingList({
         </div>
       ) : (
         <p className="upcoming-empty">
-          No upcoming reminders. Add one whenever you need it.
+          {t("No upcoming reminders. Add one whenever you need it.")}
         </p>
       )}
       <div className="upcoming-actions">
         <button className="text-button" onClick={onGap}>
-          ✦ Declare care gap
+          ✦ {t("Declare care gap")}
         </button>
         {owner && (
           <button className="text-button" onClick={onInvite}>
             <Users size={15} />
-            Invite caregiver
+            {t("Invite caregiver")}
           </button>
         )}
       </div>
@@ -1210,6 +1148,7 @@ function UpcomingList({
 }
 
 function LogModal({
+  locale,
   activity,
   activities,
   at,
@@ -1222,6 +1161,7 @@ function LogModal({
   onNote,
   onSubmit,
 }: {
+  locale: User["locale"];
   activity?: Activity;
   activities: Activity[];
   at: string;
@@ -1234,14 +1174,15 @@ function LogModal({
   onNote: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
 }) {
+  const t = (text: string) => translate(locale, text);
   return (
     <ModalBackdrop onClose={onClose}>
       <form className="log-modal" onSubmit={onSubmit}>
         <button type="button" className="close" onClick={onClose}>
           <X size={20} />
         </button>
-        <p className="eyebrow">QUICK LOG</p>
-        <h2>What happened?</h2>
+        <p className="eyebrow">{t("QUICK LOG")}</p>
+        <h2>{t("What happened?")}</h2>
         <div className="activity-picker">
           {activities.map((item) => (
             <button
@@ -1251,12 +1192,12 @@ function LogModal({
               onClick={() => onActivity(item.id)}
             >
               <i style={{ background: item.color }}>{icon(item.kind)}</i>
-              {item.name}
+              {t(item.name)}
             </button>
           ))}
         </div>
         <label>
-          When
+          {t("When")}
           <input
             type="datetime-local"
             value={at}
@@ -1266,7 +1207,8 @@ function LogModal({
         </label>
         {activity?.fields.map((field) => (
           <label key={field.id}>
-            {field.label}
+            {t(field.label)}
+            {field.unit ? ` (${field.unit})` : ""}
             {field.field_type === "boolean" ? (
               <input
                 type="checkbox"
@@ -1286,7 +1228,7 @@ function LogModal({
                 }
               >
                 {field.options.map((option) => (
-                  <option key={option}>{option}</option>
+                  <option key={option}>{t(option)}</option>
                 ))}
               </select>
             ) : (
@@ -1306,14 +1248,14 @@ function LogModal({
           </label>
         ))}
         <label>
-          Note
+          {t("Note")}
           <textarea
             value={note}
             onChange={(event) => onNote(event.target.value)}
-            placeholder="Optional context for everyone"
+            placeholder={t("Optional context for everyone")}
           />
         </label>
-        <button className="primary submit">Save</button>
+        <button className="primary submit log-submit">{t("Save")}</button>
       </form>
     </ModalBackdrop>
   );
@@ -1332,11 +1274,12 @@ function HomeSidebar({
 }) {
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
+  const t = (text: string) => translate(user.locale, text);
   return (
     <>
       <button
         className="home-menu"
-        aria-label="Open navigation"
+        aria-label={t("Open navigation")}
         aria-expanded={open}
         onClick={() => setOpen(true)}
       >
@@ -1344,7 +1287,7 @@ function HomeSidebar({
       </button>
       <button
         className={`home-sidebar-scrim ${open ? "visible" : ""}`}
-        aria-label="Close navigation"
+        aria-label={t("Close navigation")}
         onClick={close}
       />
       <aside className={`home-sidebar ${open ? "open" : ""}`}>
@@ -1352,7 +1295,7 @@ function HomeSidebar({
         <div className="sidebar-bottom">
           <LanguageControl
             locale={user.locale}
-            label="Language"
+            label={t("Language")}
             onClick={() => {
               close();
               onOpenLanguage();
@@ -1360,7 +1303,7 @@ function HomeSidebar({
           />
           <SidebarAccount
             displayName={user.display_name}
-            signOutLabel="Sign out"
+            signOutLabel={t("Sign out")}
             onSignOut={onSignOut}
           />
         </div>
@@ -1396,6 +1339,7 @@ function Home({
   onSignOut: () => void;
   onHome: () => void;
 }) {
+  const t = (text: string) => translate(user.locale, text);
   return (
     <main className="home-shell">
       <HomeSidebar
@@ -1405,24 +1349,26 @@ function Home({
         onSignOut={onSignOut}
       />
       <section className="empty-home">
-        <p className="eyebrow">YOUR FAMILY SPACE</p>
+        <p className="eyebrow">{t("YOUR FAMILY SPACE")}</p>
         <h1>
-          Everything starts when
+          {t("Everything starts when")}
           <br />
-          you’re ready.
+          {t("you’re ready.")}
         </h1>
         <p>
-          There are no child profiles in your family space yet. Create one
-          whenever you want to begin tracking care.
+          {t(
+            "There are no child profiles in your family space yet. Create one whenever you want to begin tracking care.",
+          )}
         </p>
         <button className="primary home-create" onClick={onCreate}>
           <Plus size={18} />
-          Create child
+          {t("Create child")}
         </button>
       </section>
       {createChildOpen && (
         <CreateChildModal
           error={error}
+          locale={user.locale}
           onClose={onCloseCreate}
           onSubmit={onCreateChild}
         />
@@ -1474,6 +1420,7 @@ function ChildrenHome({
   onHome: () => void;
 }) {
   const [actionsFor, setActionsFor] = useState<string | null>(null);
+  const t = (text: string) => translate(user.locale, text);
   return (
     <main className="home-shell">
       <HomeSidebar
@@ -1485,13 +1432,13 @@ function ChildrenHome({
       <section className="children-home">
         <div className="children-home-heading">
           <div>
-            <p className="eyebrow">YOUR FAMILY SPACE</p>
-            <h1>Children</h1>
-            <p>Select a child to open their care timeline.</p>
+            <p className="eyebrow">{t("YOUR FAMILY SPACE")}</p>
+            <h1>{t("Children")}</h1>
+            <p>{t("Select a child to open their care timeline.")}</p>
           </div>
           <button className="primary" onClick={onCreate}>
             <Plus size={18} />
-            Add child
+            {t("Add child")}
           </button>
         </div>
         <div className="children-list">
@@ -1503,9 +1450,27 @@ function ChildrenHome({
               >
                 <span className="avatar">{item.name[0]}</span>
                 <span>
-                  <strong>{item.name}</strong>
-                  <small>
-                    {item.timezone} · {item.role}
+                  <strong>
+                    <bdi>{item.name}</bdi>
+                  </strong>
+                  <small className="child-meta">
+                    {user.locale === "he" ? (
+                      <>
+                        <span>{t(item.role)}</span>
+                        <span>·</span>
+                        <bdi dir="rtl">
+                          {timeZoneLabel(item.timezone, user.locale)}
+                        </bdi>
+                      </>
+                    ) : (
+                      <>
+                        <bdi dir="ltr">
+                          {timeZoneLabel(item.timezone, user.locale)}
+                        </bdi>
+                        <span>·</span>
+                        <span>{t(item.role)}</span>
+                      </>
+                    )}
                   </small>
                 </span>
                 <span className="child-row-arrow">→</span>
@@ -1514,7 +1479,7 @@ function ChildrenHome({
                 <div className="child-actions">
                   <button
                     className="more child-more"
-                    title={`Actions for ${item.name}`}
+                    title={`${t("Actions for")} ${item.name}`}
                     onClick={() =>
                       setActionsFor(actionsFor === item.id ? null : item.id)
                     }
@@ -1529,7 +1494,7 @@ function ChildrenHome({
                           onEditChild(item);
                         }}
                       >
-                        Edit
+                        {t("Edit")}
                       </button>
                       <button
                         className="danger"
@@ -1538,7 +1503,7 @@ function ChildrenHome({
                           onDeleteChild(item);
                         }}
                       >
-                        Delete
+                        {t("Delete")}
                       </button>
                     </div>
                   )}
@@ -1551,6 +1516,7 @@ function ChildrenHome({
       {createChildOpen && (
         <CreateChildModal
           error={error}
+          locale={user.locale}
           onClose={onCloseCreate}
           onSubmit={onCreateChild}
         />
@@ -1567,6 +1533,7 @@ function ChildrenHome({
 }
 
 function ManageModal({
+  locale,
   panel,
   activities,
   children,
@@ -1584,6 +1551,7 @@ function ManageModal({
   onChild,
   onRenameChild,
 }: {
+  locale: User["locale"];
   panel: Panel;
   activities: Activity[];
   children: Child[];
@@ -1601,25 +1569,26 @@ function ManageModal({
   onChild: (event: FormEvent<HTMLFormElement>) => void;
   onRenameChild: (child: Child) => void;
 }) {
+  const t = (text: string) => translate(locale, text);
   const fields = (
     <>
       <label>
-        Field type
+        {t("Field type")}
         <select name="type">
-          <option value="number">Number</option>
-          <option value="text">Text</option>
-          <option value="boolean">Yes / no</option>
-          <option value="select">Single select</option>
-          <option value="duration">Duration</option>
+          <option value="number">{t("Number")}</option>
+          <option value="text">{t("Text")}</option>
+          <option value="boolean">{t("Yes / no")}</option>
+          <option value="select">{t("Single select")}</option>
+          <option value="duration">{t("Duration")}</option>
         </select>
       </label>
       <label>
-        Unit
-        <input name="unit" placeholder="e.g. ml, °C" />
+        {t("Unit")}
+        <input name="unit" placeholder={t("e.g. ml, °C")} />
       </label>
       <label>
-        Options for a select
-        <input name="options" placeholder="e.g. left, right" />
+        {t("Options for a select")}
+        <input name="options" placeholder={t("e.g. left, right")} />
       </label>
     </>
   );
@@ -1632,22 +1601,22 @@ function ManageModal({
         {panel === "activity" && (
           <>
             <form onSubmit={onActivity}>
-              <h2>Custom activity</h2>
+              <h2>{t("Custom activity")}</h2>
               <label>
-                Name
-                <input name="name" required placeholder="e.g. Bath" />
+                {t("Name")}
+                <input name="name" required placeholder={t("e.g. Bath")} />
               </label>
               <label>
-                First field (optional)
-                <input name="field" placeholder="e.g. Temperature" />
+                {t("First field (optional)")}
+                <input name="field" placeholder={t("e.g. Temperature")} />
               </label>
               {fields}
-              <button className="primary submit">Create activity</button>
+              <button className="primary submit">{t("Create activity")}</button>
             </form>
             <form onSubmit={onField}>
-              <h3>Add a field</h3>
+              <h3>{t("Add a field")}</h3>
               <label>
-                Activity
+                {t("Activity")}
                 <select name="activityId">
                   {activities.map((activity) => (
                     <option key={activity.id} value={activity.id}>
@@ -1657,11 +1626,11 @@ function ManageModal({
                 </select>
               </label>
               <label>
-                Field name
+                {t("Field name")}
                 <input name="field" required />
               </label>
               {fields}
-              <button className="text-button">Add field</button>
+              <button className="text-button">{t("Add field")}</button>
             </form>
             {owner && (
               <div className="note-list">
@@ -1672,7 +1641,7 @@ function ManageModal({
                       className="text-button danger"
                       onClick={() => onArchive(activity.id)}
                     >
-                      Remove activity
+                      {t("Remove activity")}
                     </button>
                   </article>
                 ))}
@@ -1682,15 +1651,15 @@ function ManageModal({
         )}
         {panel === "reminder" && (
           <form onSubmit={onReminder}>
-            <h2>Passive reminder</h2>
+            <h2>{t("Passive reminder")}</h2>
             <label>
-              Title
+              {t("Title")}
               <input name="title" required />
             </label>
             <label>
-              Activity
+              {t("Activity")}
               <select name="activityId">
-                <option value="">None</option>
+                <option value="">{t("None")}</option>
                 {activities.map((activity) => (
                   <option key={activity.id} value={activity.id}>
                     {activity.name}
@@ -1699,78 +1668,82 @@ function ManageModal({
               </select>
             </label>
             <label>
-              Schedule
+              {t("Schedule")}
               <select name="kind">
-                <option value="interval">Repeat after last activity</option>
-                <option value="one_time">One time</option>
+                <option value="interval">
+                  {t("Repeat after last activity")}
+                </option>
+                <option value="one_time">{t("One time")}</option>
               </select>
             </label>
             <label>
-              Interval hours
+              {t("Interval hours")}
               <input name="hours" type="number" min="1" defaultValue="3" />
             </label>
             <label>
-              One-time date/time
+              {t("One-time date/time")}
               <input name="when" type="datetime-local" />
             </label>
-            <button className="primary submit">Save reminder</button>
+            <button className="primary submit">{t("Save reminder")}</button>
           </form>
         )}
         {panel === "gap" && (
           <form onSubmit={onGap}>
-            <h2>Declare care gap</h2>
+            <h2>{t("Declare care gap")}</h2>
             <p className="time-hint">
-              Logs in or across this range do not affect interval analytics.
+              {t(
+                "Logs in or across this range do not affect interval analytics.",
+              )}
             </p>
             <label>
-              Start
+              {t("Start")}
               <input name="start" type="datetime-local" required />
             </label>
             <label>
-              End
+              {t("End")}
               <input name="end" type="datetime-local" required />
             </label>
             <label>
-              Reason
-              <input name="reason" placeholder="Shabbat" />
+              {t("Reason")}
+              <input name="reason" placeholder={t("Shabbat")} />
             </label>
-            <button className="primary submit">Declare gap</button>
+            <button className="primary submit">{t("Declare gap")}</button>
           </form>
         )}
         {panel === "invite" && (
           <form onSubmit={onInvite}>
-            <h2>Invite caregiver</h2>
+            <h2>{t("Invite caregiver")}</h2>
             <label>
-              Email
+              {t("Email")}
               <input name="email" type="email" required />
             </label>
             <label>
-              Role
+              {t("Role")}
               <select name="role">
-                <option value="caregiver">Caregiver</option>
-                <option value="viewer">Viewer</option>
+                <option value="caregiver">{t("Caregiver")}</option>
+                <option value="viewer">{t("Viewer")}</option>
               </select>
             </label>
-            <button className="primary submit">Create invitation</button>
+            <button className="primary submit">{t("Create invitation")}</button>
             {inviteUrl && <textarea readOnly value={inviteUrl} />}
           </form>
         )}
         {panel === "notes" && (
           <>
             <form onSubmit={onNote}>
-              <h2>Notes</h2>
+              <h2>{t("Notes")}</h2>
               <label>
-                New note
+                {t("New note")}
                 <textarea name="body" required />
               </label>
               <label>
-                Visibility
+                {t("Visibility")}
                 <select name="visibility">
-                  <option value="shared">Shared</option>
-                  <option value="private">Private</option>
+                  <option value="shared">{t("Shared")}</option>
+                  <option value="private">{t("Private")}</option>
                 </select>
               </label>
-              <button className="primary submit">Save note</button>
+              <button className="primary submit">{t("Save note")}</button>
             </form>
             <div className="note-list">
               {notes.map((note) => (
@@ -1786,31 +1759,33 @@ function ManageModal({
         )}
         {panel === "children" && (
           <>
-            <h2>Children</h2>
+            <h2>{t("Children")}</h2>
             <div className="note-list">
               {children.map((child) => (
                 <article key={child.id}>
                   <strong>{child.name}</strong>
-                  <p>Your role: {child.role}</p>
+                  <p>
+                    {t("Your role:")} {t(child.role)}
+                  </p>
                   {child.role === "owner" && (
                     <button
                       className="text-button"
                       onClick={() => onRenameChild(child)}
                     >
-                      Rename
+                      {t("Rename")}
                     </button>
                   )}
                 </article>
               ))}
             </div>
             <form onSubmit={onChild}>
-              <h3>Add another child</h3>
+              <h3>{t("Add another child")}</h3>
               <label>
-                Name
+                {t("Name")}
                 <input name="name" required />
               </label>
               <label>
-                Timezone
+                {t("Timezone")}
                 <input
                   name="timezone"
                   defaultValue={
@@ -1820,14 +1795,14 @@ function ManageModal({
                 />
               </label>
               <label>
-                Birth date
+                {t("Birth date")}
                 <input name="birthDate" type="date" />
               </label>
-              <button className="text-button">Create child</button>
+              <button className="text-button">{t("Create child")}</button>
             </form>
             {owner && (
               <p className="time-hint">
-                Use Invite caregiver from the right panel to add people.
+                {t("Use Invite caregiver from the right panel to add people.")}
               </p>
             )}
           </>

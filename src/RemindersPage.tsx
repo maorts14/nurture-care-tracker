@@ -1,6 +1,7 @@
 import { FormEvent } from "react";
 import { Check, Pencil, Trash2 } from "lucide-react";
 import { DetailPageHeader } from "./components/DetailPageHeader";
+import { Locale, translate } from "./i18n";
 
 type Reminder = {
   id: string;
@@ -12,6 +13,7 @@ type Reminder = {
 };
 type Activity = { id: string; name: string };
 type Props = {
+  locale: Locale;
   reminders: Reminder[];
   activities: Activity[];
   owner: boolean;
@@ -23,6 +25,7 @@ type Props = {
 };
 
 export function RemindersPage({
+  locale,
   reminders,
   activities,
   owner,
@@ -32,25 +35,31 @@ export function RemindersPage({
   onComplete,
   onDelete,
 }: Props) {
+  const t = (text: string) => translate(locale, text);
   return (
     <main className="detail-page">
       <DetailPageHeader
-        eyebrow="PASSIVE IN-APP REMINDERS"
-        title="Upcoming care"
+        eyebrow={t("PASSIVE IN-APP REMINDERS")}
+        title={t("Upcoming care")}
+        backLabel={t("← Timeline")}
         onBack={onClose}
       >
-        <p>Recurring reminders reset from the most recent matching activity.</p>
+        <p>
+          {t(
+            "Recurring reminders reset from the most recent matching activity.",
+          )}
+        </p>
       </DetailPageHeader>
       {owner && (
         <form className="detail-form" onSubmit={onCreate}>
           <label>
-            Title
-            <input name="title" required placeholder="e.g. Vitamin D" />
+            {t("Title")}
+            <input name="title" required placeholder={t("e.g. Vitamin D")} />
           </label>
           <label>
-            Activity
+            {t("Activity")}
             <select name="activityId">
-              <option value="">None</option>
+              <option value="">{t("None")}</option>
               {activities.map((activity) => (
                 <option key={activity.id} value={activity.id}>
                   {activity.name}
@@ -59,21 +68,23 @@ export function RemindersPage({
             </select>
           </label>
           <label>
-            Schedule
+            {t("Schedule")}
             <select name="kind">
-              <option value="interval">Repeat after last activity</option>
-              <option value="one_time">One time</option>
+              <option value="interval">
+                {t("Repeat after last activity")}
+              </option>
+              <option value="one_time">{t("One time")}</option>
             </select>
           </label>
           <label>
-            Interval hours
+            {t("Interval hours")}
             <input name="hours" type="number" min="1" defaultValue="3" />
           </label>
           <label>
-            One-time date/time
+            {t("One-time date/time")}
             <input name="when" type="datetime-local" />
           </label>
-          <button className="primary">Save reminder</button>
+          <button className="primary">{t("Save reminder")}</button>
         </form>
       )}
       <section className="detail-list">
@@ -82,23 +93,23 @@ export function RemindersPage({
             <strong>{reminder.title}</strong>
             <p>
               {reminder.kind === "interval"
-                ? `Every ${Math.round((reminder.interval_minutes ?? 0) / 60)} hours after activity`
+                ? `${t("Every")} ${Math.round((reminder.interval_minutes ?? 0) / 60)} ${t("hours after activity")}`
                 : new Date(reminder.scheduled_for ?? "").toLocaleString()}
             </p>
             <div className="inline-actions">
               <button onClick={() => onComplete(reminder)}>
                 <Check size={14} />
-                Complete
+                {t("Complete")}
               </button>
               {owner && (
                 <>
                   <button onClick={() => onEdit(reminder)}>
                     <Pencil size={14} />
-                    Edit
+                    {t("Edit")}
                   </button>
                   <button className="danger" onClick={() => onDelete(reminder)}>
                     <Trash2 size={14} />
-                    Delete
+                    {t("Delete")}
                   </button>
                 </>
               )}

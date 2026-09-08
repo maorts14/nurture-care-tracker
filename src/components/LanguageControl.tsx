@@ -13,10 +13,11 @@ export function LanguageControl({
   label,
   onClick,
 }: LanguageControlProps) {
+  const languageName = locale === "he" ? "עברית" : "English";
   return (
     <button className="language-button" onClick={onClick}>
       <Languages size={18} />
-      {label}: {locale.toUpperCase()}
+      {label}: <span dir={locale === "he" ? "rtl" : "ltr"}>{languageName}</span>
     </button>
   );
 }

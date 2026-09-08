@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { translate } from "../i18n";
 import { ModalBackdrop } from "./ModalBackdrop";
 
 type Locale = "en" | "he";
@@ -14,6 +15,7 @@ export function LanguagePicker({
   onClose,
   onSelect,
 }: LanguagePickerProps) {
+  const t = (text: string) => translate(locale, text);
   return (
     <ModalBackdrop onClose={onClose}>
       <section
@@ -24,26 +26,32 @@ export function LanguagePicker({
       >
         <button
           className="close"
-          aria-label="Close language picker"
+          aria-label={t("Close language picker")}
           onClick={onClose}
         >
           <X size={20} />
         </button>
-        <p className="eyebrow">PREFERENCES</p>
-        <h2 id="language-title">Language</h2>
-        <p className="time-hint">Choose the language for your family space.</p>
+        <p className="eyebrow">{t("PREFERENCES")}</p>
+        <h2 id="language-title">{t("Language")}</h2>
+        <p className="time-hint">
+          {t("Choose the language for your family space.")}
+        </p>
         <div className="language-options">
           <button
             className={locale === "en" ? "selected" : ""}
             onClick={() => onSelect("en")}
+            lang="en"
+            dir="ltr"
           >
-            English <small>EN</small>
+            English
           </button>
           <button
             className={locale === "he" ? "selected" : ""}
             onClick={() => onSelect("he")}
+            lang="he"
+            dir="rtl"
           >
-            עברית <small>HE</small>
+            עברית
           </button>
         </div>
       </section>

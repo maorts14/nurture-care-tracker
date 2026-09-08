@@ -1,6 +1,7 @@
 import { FormEvent } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { DetailPageHeader } from "./components/DetailPageHeader";
+import { Locale, translate } from "./i18n";
 
 type Note = {
   id: string;
@@ -10,6 +11,7 @@ type Note = {
   created_by_name: string;
 };
 type Props = {
+  locale: Locale;
   notes: Note[];
   userId: string;
   write: boolean;
@@ -20,6 +22,7 @@ type Props = {
 };
 
 export function NotesPage({
+  locale,
   notes,
   userId,
   write,
@@ -28,27 +31,29 @@ export function NotesPage({
   onEdit,
   onDelete,
 }: Props) {
+  const t = (text: string) => translate(locale, text);
   return (
     <main className="detail-page">
       <DetailPageHeader
-        eyebrow="SHARED CHILD SPACE"
-        title="Notes"
+        eyebrow={t("SHARED CHILD SPACE")}
+        title={t("Notes")}
+        backLabel={t("← Timeline")}
         onBack={onClose}
       />
       {write && (
         <form className="detail-form" onSubmit={onCreate}>
           <label>
-            New note
+            {t("New note")}
             <textarea name="body" required />
           </label>
           <label>
-            Visibility
+            {t("Visibility")}
             <select name="visibility">
-              <option value="shared">Shared with caregivers</option>
-              <option value="private">Only me</option>
+              <option value="shared">{t("Shared with caregivers")}</option>
+              <option value="private">{t("Only me")}</option>
             </select>
           </label>
-          <button className="primary">Save note</button>
+          <button className="primary">{t("Save note")}</button>
         </form>
       )}
       <section className="detail-list">
@@ -56,18 +61,18 @@ export function NotesPage({
           <article key={note.id}>
             <div>
               <strong>{note.created_by_name}</strong>
-              <span>{note.visibility}</span>
+              <span>{t(note.visibility)}</span>
             </div>
             <p>{note.body}</p>
             {note.created_by === userId && (
               <div className="inline-actions">
                 <button onClick={() => onEdit(note)}>
                   <Pencil size={14} />
-                  Edit
+                  {t("Edit")}
                 </button>
                 <button className="danger" onClick={() => onDelete(note)}>
                   <Trash2 size={14} />
-                  Delete
+                  {t("Delete")}
                 </button>
               </div>
             )}
