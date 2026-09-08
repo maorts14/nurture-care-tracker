@@ -250,8 +250,6 @@ app.post("/api/children", async (request, response) => {
       `
       WITH defaults (kind, field_key, label, field_type, unit, options, dashboard_metrics) AS (
         VALUES
-          ('feeding'::activity_kind, 'amount', 'Amount', 'number', 'ml', '[]'::jsonb, '["total", "average", "trend"]'::jsonb),
-          ('feeding'::activity_kind, 'method', 'Feeding method', 'select', NULL, '["Bottle", "Breastfeeding", "Formula", "Solids"]'::jsonb, '["count"]'::jsonb),
           ('diaper'::activity_kind, 'type', 'Diaper type', 'select', NULL, '["Wet", "Dirty", "Mixed"]'::jsonb, '["count"]'::jsonb)
       )
       INSERT INTO activity_field_definition (activity_id, field_key, label, field_type, unit, options, dashboard_metrics)
@@ -307,6 +305,93 @@ app.delete("/api/children/:childId", async (request, response) => {
   io.to(childRoom(request.params.childId)).emit("timeline:changed");
   response.status(204).end();
 });
+app.get("/api/children/:childId/leave-preview", async (request, response) => {
+  const session = requireSession(request, response);
+  if (!session) return;
+  const { childId } = request.params;
+  const member = await pool.query<{
+    role: "owner" | "caregiver" | "viewer";
+    child_name: string;
+  }>(
+    "SELECT membership.role, child.name AS child_name FROM child_membership AS membership JOIN child ON child.id = membership.child_id WHERE membership.child_id = $1 AND membership.user_id = $2 AND child.archived_at IS NULL",
+    [childId, session.userId],
+  );
+  if (member.rowCount !== 1) {
+    response.status(404).json({ error: "This care space is not available" });
+    return;
+  }
+  if (member.rows[0].role !== "owner") {
+    response.json({ action: "leave", child_name: member.rows[0].child_name });
+    return;
+  }
+  const successor = await pool.query<{ display_name: string }>(
+    "SELECT user_account.display_name FROM child_membership AS membership JOIN app_user AS user_account ON user_account.id = membership.user_id WHERE membership.child_id = $1 AND membership.user_id <> $2 ORDER BY membership.joined_at ASC LIMIT 1",
+    [childId, session.userId],
+  );
+  response.json(
+    successor.rowCount
+      ? {
+          action: "transfer",
+          child_name: member.rows[0].child_name,
+          successor_name: successor.rows[0].display_name,
+        }
+      : { action: "delete", child_name: member.rows[0].child_name },
+  );
+});
+app.post("/api/children/:childId/leave", async (request, response) => {
+  const session = requireSession(request, response);
+  if (!session) return;
+  const { childId } = request.params;
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const member = await client.query<{
+      role: "owner" | "caregiver" | "viewer";
+    }>(
+      "SELECT membership.role FROM child JOIN child_membership AS membership ON membership.child_id = child.id WHERE child.id = $1 AND membership.user_id = $2 AND child.archived_at IS NULL FOR UPDATE OF child, membership",
+      [childId, session.userId],
+    );
+    if (member.rowCount !== 1) {
+      await client.query("ROLLBACK");
+      response.status(404).json({ error: "This care space is not available" });
+      return;
+    }
+    if (member.rows[0].role !== "owner") {
+      await client.query(
+        "DELETE FROM child_membership WHERE child_id = $1 AND user_id = $2",
+        [childId, session.userId],
+      );
+      await client.query("COMMIT");
+      io.to(childRoom(childId)).emit("timeline:changed");
+      response.status(204).end();
+      return;
+    }
+    const successor = await client.query<{ user_id: string }>(
+      "SELECT user_id FROM child_membership WHERE child_id = $1 AND user_id <> $2 ORDER BY joined_at ASC LIMIT 1 FOR UPDATE",
+      [childId, session.userId],
+    );
+    if (successor.rowCount) {
+      await client.query(
+        "UPDATE child_membership SET role = 'owner' WHERE child_id = $1 AND user_id = $2",
+        [childId, successor.rows[0].user_id],
+      );
+      await client.query(
+        "DELETE FROM child_membership WHERE child_id = $1 AND user_id = $2",
+        [childId, session.userId],
+      );
+    } else {
+      await client.query("DELETE FROM child WHERE id = $1", [childId]);
+    }
+    await client.query("COMMIT");
+    io.to(childRoom(childId)).emit("timeline:changed");
+    response.status(204).end();
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+});
 app.put("/api/me/locale", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
@@ -332,7 +417,7 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
   }
   const [timeline, activities, fields, reminders, gaps] = await Promise.all([
     pool.query(
-      `SELECT log.id, log.activity_id, log.event_time, log.event_timezone, log.field_values, log.note, log.created_at, log.created_by AS created_by_id, activity.name AS activity_name, activity.kind, activity.color, author.display_name AS created_by FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id JOIN app_user AS author ON author.id = log.created_by WHERE log.child_id = $1 ORDER BY log.event_time DESC LIMIT 100`,
+      `SELECT log.id, log.activity_id, log.event_time, log.event_timezone, log.field_values, log.note, log.created_at, log.created_by AS created_by_id, activity.name AS activity_name, activity.kind, activity.color, author.display_name AS created_by, COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id JOIN app_user AS author ON author.id = log.created_by WHERE log.child_id = $1 ORDER BY log.event_time DESC LIMIT 100`,
       [childId],
     ),
     pool.query(
@@ -363,6 +448,7 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
   const analytics = activitiesWithFields.map(
     (activity: {
       id: string;
+      kind: "feeding" | "diaper" | "custom";
       fields: {
         field_key: string;
         label: string;
@@ -395,28 +481,57 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
           averageHours !== null &&
           medianHours !== null &&
           Math.abs(averageHours - medianHours) > medianHours * 0.25,
-        fields: activity.fields
-          .filter(
-            (field) =>
-              field.field_type === "number" || field.field_type === "duration",
-          )
-          .map((field) => {
-            const values = logs
-              .map((log) => Number(log.field_values[field.field_key]))
-              .filter(Number.isFinite);
-            return {
-              key: field.field_key,
-              label: field.label,
-              unit: field.unit,
-              count: values.length,
-              average: values.length
-                ? values.reduce(
-                    (sum: number, value: number) => sum + value,
-                    0,
-                  ) / values.length
-                : null,
-            };
-          }),
+        fields:
+          activity.kind === "feeding"
+            ? (() => {
+                const totals = logs
+                  .map((log) =>
+                    log.feeding_portions.reduce(
+                      (sum: number, portion: { amount_ml: number }) =>
+                        sum + Number(portion.amount_ml),
+                      0,
+                    ),
+                  )
+                  .filter((total: number) => total > 0);
+                return totals.length
+                  ? [
+                      {
+                        key: "total_milk",
+                        label: "Total milk",
+                        unit: "ml",
+                        count: totals.length,
+                        average:
+                          totals.reduce(
+                            (sum: number, value: number) => sum + value,
+                            0,
+                          ) / totals.length,
+                      },
+                    ]
+                  : [];
+              })()
+            : activity.fields
+                .filter(
+                  (field) =>
+                    field.field_type === "number" ||
+                    field.field_type === "duration",
+                )
+                .map((field) => {
+                  const values = logs
+                    .map((log) => Number(log.field_values[field.field_key]))
+                    .filter(Number.isFinite);
+                  return {
+                    key: field.field_key,
+                    label: field.label,
+                    unit: field.unit,
+                    count: values.length,
+                    average: values.length
+                      ? values.reduce(
+                          (sum: number, value: number) => sum + value,
+                          0,
+                        ) / values.length
+                      : null,
+                  };
+                }),
       };
     },
   );
@@ -433,12 +548,17 @@ app.post("/api/children/:childId/logs", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
   const { childId } = request.params;
-  const { activityId, eventTime, eventTimezone, fieldValues, note } =
+  const { activityId, eventTime, eventTimezone, fieldValues, portions, note } =
     request.body as {
       activityId: string;
       eventTime: string;
       eventTimezone: string;
       fieldValues: Record<string, unknown>;
+      portions?: {
+        kind: "breast_milk" | "formula";
+        deliveryMethod: "bottle" | "breastfeeding";
+        amountMl: number;
+      }[];
       note?: string;
     };
   if (!activityId || !eventTime || !eventTimezone) {
@@ -450,13 +570,40 @@ app.post("/api/children/:childId/logs", async (request, response) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    const access = await client.query(
-      `SELECT membership.role FROM child_membership AS membership JOIN activity_definition AS activity ON activity.id = $2 AND activity.child_id = membership.child_id WHERE membership.child_id = $1 AND membership.user_id = $3 AND membership.role IN ('owner', 'caregiver') AND activity.archived_at IS NULL`,
+    const access = await client.query<{
+      kind: "feeding" | "diaper" | "custom";
+    }>(
+      `SELECT activity.kind FROM child_membership AS membership JOIN activity_definition AS activity ON activity.id = $2 AND activity.child_id = membership.child_id WHERE membership.child_id = $1 AND membership.user_id = $3 AND membership.role IN ('owner', 'caregiver') AND activity.archived_at IS NULL`,
       [childId, activityId, session.userId],
     );
     if (access.rowCount !== 1) {
       await client.query("ROLLBACK");
       response.status(403).json({ error: "You cannot log this activity" });
+      return;
+    }
+    const feedingPortions =
+      access.rows[0].kind === "feeding"
+        ? (portions ?? []).map((portion, position) => ({
+            kind: portion.kind,
+            delivery_method: portion.deliveryMethod,
+            amount_ml: Number(portion.amountMl),
+            position,
+          }))
+        : [];
+    if (
+      access.rows[0].kind === "feeding" &&
+      (!feedingPortions.length ||
+        feedingPortions.some(
+          (portion) =>
+            (portion.kind !== "breast_milk" && portion.kind !== "formula") ||
+            (portion.delivery_method !== "bottle" &&
+              portion.delivery_method !== "breastfeeding") ||
+            !Number.isFinite(portion.amount_ml) ||
+            portion.amount_ml <= 0,
+        ))
+    ) {
+      await client.query("ROLLBACK");
+      response.status(400).json({ error: "Add at least one milk portion" });
       return;
     }
     const inserted = await client.query(
@@ -466,11 +613,18 @@ app.post("/api/children/:childId/logs", async (request, response) => {
         activityId,
         eventTime,
         eventTimezone,
-        fieldValues,
+        access.rows[0].kind === "feeding" ? {} : fieldValues,
         note ?? null,
         session.userId,
       ],
     );
+    if (feedingPortions.length)
+      await client.query(
+        `INSERT INTO feeding_portion (log_id, kind, delivery_method, amount_ml, position)
+         SELECT $1, portion.kind, portion.delivery_method, portion.amount_ml, portion.position
+         FROM jsonb_to_recordset($2::jsonb) AS portion(kind text, delivery_method text, amount_ml numeric, position smallint)`,
+        [inserted.rows[0].id, JSON.stringify(feedingPortions)],
+      );
     await client.query("COMMIT");
     io.to(childRoom(childId)).emit("timeline:changed");
     response.status(201).json(inserted.rows[0]);
@@ -541,15 +695,45 @@ app.post("/api/children/:childId/invitations", async (request, response) => {
     acceptUrl: `/?invite=${invite.rows[0].token}`,
   });
 });
-app.post("/api/invitations/:token/accept", async (request, response) => {
+app.get("/api/invitations/:token", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
   const { token } = request.params;
   const invite = await pool.query<{
-    child_id: string;
+    child_name: string;
+    invited_by_name: string;
+    created_at: string;
     role: "caregiver" | "viewer";
   }>(
-    `SELECT invitation.child_id, invitation.role FROM child_invitation AS invitation JOIN app_user ON app_user.id = $2 WHERE invitation.token = $1 AND invitation.accepted_at IS NULL AND invitation.expires_at > now() AND (invitation.email IS NULL OR lower(invitation.email) = lower(app_user.email))`,
+    `SELECT child.name AS child_name, inviter.display_name AS invited_by_name, invitation.created_at, invitation.role FROM child_invitation AS invitation JOIN child ON child.id = invitation.child_id JOIN app_user AS inviter ON inviter.id = invitation.invited_by JOIN app_user AS recipient ON recipient.id = $2 WHERE invitation.token = $1 AND invitation.accepted_at IS NULL AND invitation.expires_at > now() AND (invitation.email IS NULL OR lower(invitation.email) = lower(recipient.email))`,
+    [token, session.userId],
+  );
+  if (invite.rowCount !== 1) {
+    response.status(404).json({ error: "This invitation is not available" });
+    return;
+  }
+  response.json(invite.rows[0]);
+});
+app.post("/api/invitations/:token/accept", async (request, response) => {
+  const session = requireSession(request, response);
+  if (!session) return;
+  const { token } = request.params;
+  const invite = await pool.query<{ child_id: string }>(
+    `WITH accepted_invitation AS (
+       UPDATE child_invitation
+       SET accepted_at = now()
+       WHERE token = $1
+         AND accepted_at IS NULL
+         AND expires_at > now()
+         AND (email IS NULL OR lower(email) = lower((SELECT email FROM app_user WHERE id = $2)))
+       RETURNING child_id, role
+     ), membership AS (
+       INSERT INTO child_membership (child_id, user_id, role)
+       SELECT child_id, $2, role FROM accepted_invitation
+       ON CONFLICT (child_id, user_id) DO UPDATE SET role = EXCLUDED.role
+       RETURNING child_id
+     )
+     SELECT child_id FROM membership`,
     [token, session.userId],
   );
   if (invite.rowCount !== 1) {
@@ -558,14 +742,6 @@ app.post("/api/invitations/:token/accept", async (request, response) => {
       .json({ error: "This invitation is not available for your account" });
     return;
   }
-  await pool.query(
-    "INSERT INTO child_membership (child_id, user_id, role) VALUES ($1, $2, $3) ON CONFLICT (child_id, user_id) DO UPDATE SET role = EXCLUDED.role",
-    [invite.rows[0].child_id, session.userId, invite.rows[0].role],
-  );
-  await pool.query(
-    "UPDATE child_invitation SET accepted_at = now() WHERE token = $1",
-    [token],
-  );
   response.status(204).end();
 });
 app.post("/api/children/:childId/activities", async (request, response) => {
@@ -909,7 +1085,7 @@ app.get("/api/children/:childId/export.csv", async (request, response) => {
   }
   const [logs, reminders] = await Promise.all([
     pool.query(
-      `SELECT activity.name, log.event_time, log.field_values, log.note, author.display_name FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id JOIN app_user AS author ON author.id = log.created_by WHERE log.child_id = $1 ORDER BY log.event_time DESC`,
+      `SELECT activity.name, log.event_time, log.field_values, log.note, author.display_name, COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id JOIN app_user AS author ON author.id = log.created_by WHERE log.child_id = $1 ORDER BY log.event_time DESC`,
       [request.params.childId],
     ),
     pool.query(
@@ -926,7 +1102,12 @@ app.get("/api/children/:childId/export.csv", async (request, response) => {
         "logged",
         row.name,
         row.event_time.toISOString(),
-        JSON.stringify(row.field_values),
+        JSON.stringify({
+          ...row.field_values,
+          ...(row.feeding_portions.length
+            ? { portions: row.feeding_portions }
+            : {}),
+        }),
         row.note,
         row.display_name,
       ]
@@ -967,7 +1148,7 @@ app.get("/api/children/:childId/export.report", async (request, response) => {
       request.params.childId,
     ]),
     pool.query(
-      `SELECT activity.name, log.event_time, log.field_values, log.note, author.display_name FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id JOIN app_user AS author ON author.id = log.created_by WHERE log.child_id = $1 ORDER BY log.event_time DESC`,
+      `SELECT activity.name, log.event_time, log.field_values, log.note, author.display_name, COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id JOIN app_user AS author ON author.id = log.created_by WHERE log.child_id = $1 ORDER BY log.event_time DESC`,
       [request.params.childId],
     ),
     pool.query(
@@ -984,7 +1165,7 @@ app.get("/api/children/:childId/export.report", async (request, response) => {
   const logRows = logs.rows
     .map(
       (row) =>
-        `<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.event_time.toISOString())}</td><td>${escapeHtml(JSON.stringify(row.field_values))}</td><td>${escapeHtml(row.note)}</td><td>${escapeHtml(row.display_name)}</td></tr>`,
+        `<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.event_time.toISOString())}</td><td>${escapeHtml(JSON.stringify({ ...row.field_values, ...(row.feeding_portions.length ? { portions: row.feeding_portions } : {}) }))}</td><td>${escapeHtml(row.note)}</td><td>${escapeHtml(row.display_name)}</td></tr>`,
     )
     .join("");
   const reminderRows = reminders.rows

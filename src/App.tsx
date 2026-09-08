@@ -27,6 +27,7 @@ import {
   Sparkles,
   Trash2,
   Utensils,
+  UserMinus,
   Users,
   X,
 } from "lucide-react";
@@ -57,6 +58,17 @@ type Event = {
   color: string;
   created_by: string;
   created_by_id: string;
+  feeding_portions: FeedingPortion[];
+};
+type FeedingPortion = {
+  kind: "breast_milk" | "formula";
+  delivery_method: "bottle" | "breastfeeding";
+  amount_ml: number;
+};
+type FeedingPortionDraft = {
+  kind: FeedingPortion["kind"];
+  deliveryMethod: FeedingPortion["delivery_method"];
+  amountMl: string;
 };
 type Reminder = {
   id: string;
@@ -107,6 +119,17 @@ type Comment = {
   body: string;
   created_by: string;
   created_by_name: string;
+};
+type InvitationPreview = {
+  child_name: string;
+  invited_by_name: string;
+  created_at: string;
+  role: "caregiver" | "viewer";
+};
+type LeavePreview = {
+  action: "leave" | "transfer" | "delete";
+  child_name: string;
+  successor_name?: string;
 };
 type Panel =
   | "activity"
@@ -161,7 +184,14 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
     ? (undefined as T)
     : (response.json() as Promise<T>);
 }
-function eventDetail(event: Event) {
+function eventDetail(event: Event, t: (text: string) => string) {
+  if (event.kind === "feeding" && event.feeding_portions.length)
+    return event.feeding_portions
+      .map(
+        (portion) =>
+          `${t(portion.kind === "breast_milk" ? "Breast milk" : "Formula")} · ${t(portion.delivery_method === "bottle" ? "Bottle" : "Breastfeeding")}: ${portion.amount_ml} ml`,
+      )
+      .join(" · ");
   const values = Object.entries(event.field_values)
     .filter(([, value]) => value !== "" && value !== false && value != null)
     .map(([key, value]) => `${key.replaceAll("_", " ")}: ${String(value)}`);
@@ -189,6 +219,9 @@ export default function App() {
   const [languageOpen, setLanguageOpen] = useState(false);
   const [activityId, setActivityId] = useState("");
   const [values, setValues] = useState<Record<string, unknown>>({});
+  const [feedingPortions, setFeedingPortions] = useState<FeedingPortionDraft[]>(
+    [{ kind: "breast_milk", deliveryMethod: "bottle", amountMl: "" }],
+  );
   const [note, setNote] = useState("");
   const [at, setAt] = useState(localDateTime());
   const [notes, setNotes] = useState<Note[]>([]);
@@ -196,6 +229,11 @@ export default function App() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [comment, setComment] = useState("");
   const [inviteUrl, setInviteUrl] = useState("");
+  const [inviteToken, setInviteToken] = useState<string | null>(null);
+  const [invitePreview, setInvitePreview] = useState<InvitationPreview | null>(
+    null,
+  );
+  const [leavePreview, setLeavePreview] = useState<LeavePreview | null>(null);
   const locale: User["locale"] =
     user?.locale ?? (navigator.language.startsWith("he") ? "he" : "en");
   const t = (text: string) => translate(locale, text);
@@ -283,10 +321,26 @@ export default function App() {
     if (!user) return;
     const token = new URLSearchParams(location.search).get("invite");
     if (token)
-      api(`/api/invitations/${token}/accept`, { method: "POST" })
-        .then(load)
+      api<InvitationPreview>(`/api/invitations/${token}`)
+        .then((preview) => {
+          setInviteToken(token);
+          setInvitePreview(preview);
+        })
         .catch((cause: Error) => setError(cause.message));
   }, [user?.id, locale]);
+  const clearInvite = () => {
+    const url = new URL(location.href);
+    url.searchParams.delete("invite");
+    history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+    setInviteToken(null);
+    setInvitePreview(null);
+  };
+  const acceptInvite = async () => {
+    if (!inviteToken) return;
+    await api(`/api/invitations/${inviteToken}/accept`, { method: "POST" });
+    clearInvite();
+    await load();
+  };
   useEffect(() => {
     if (!child || !user) return;
     const socket = io({ withCredentials: true });
@@ -397,6 +451,29 @@ export default function App() {
       setError((cause as Error).message);
     }
   }
+  async function openLeave() {
+    if (!child) return;
+    try {
+      setLeavePreview(
+        await api<LeavePreview>(`/api/children/${child.id}/leave-preview`),
+      );
+    } catch (cause) {
+      setError((cause as Error).message);
+    }
+  }
+  async function leaveChild() {
+    if (!child) return;
+    try {
+      await api(`/api/children/${child.id}/leave`, { method: "POST" });
+      setLeavePreview(null);
+      setChild(null);
+      setDash(null);
+      navigate("/children", true);
+      await load();
+    } catch (cause) {
+      setError((cause as Error).message);
+    }
+  }
   async function addLog(event: FormEvent) {
     event.preventDefault();
     if (!child || !current) return;
@@ -409,6 +486,11 @@ export default function App() {
           : value,
       ]),
     );
+    const portions = feedingPortions.map((portion) => ({
+      kind: portion.kind,
+      deliveryMethod: portion.deliveryMethod,
+      amountMl: Number(portion.amountMl),
+    }));
     await api(`/api/children/${child.id}/logs`, {
       method: "POST",
       body: JSON.stringify({
@@ -416,10 +498,14 @@ export default function App() {
         eventTime: new Date(at).toISOString(),
         eventTimezone: child.timezone,
         fieldValues,
+        portions: current.kind === "feeding" ? portions : undefined,
         note,
       }),
     });
     setNote("");
+    setFeedingPortions([
+      { kind: "breast_milk", deliveryMethod: "bottle", amountMl: "" },
+    ]);
     setLogOpen(false);
   }
   async function createActivity(event: FormEvent<HTMLFormElement>) {
@@ -734,27 +820,37 @@ export default function App() {
     );
   if (routePath === "/children")
     return (
-      <ChildrenHome
-        user={user}
-        children={children}
-        error={error}
-        createChildOpen={createChildOpen}
-        onCreate={openCreateChild}
-        onCloseCreate={() => setCreateChildOpen(false)}
-        onCreateChild={createChild}
-        onSelectChild={(item) => {
-          setChild(item);
-          navigate(`/children/${item.id}`);
-        }}
-        onEditChild={renameChild}
-        onDeleteChild={deleteChild}
-        languageOpen={languageOpen}
-        onOpenLanguage={() => setLanguageOpen(true)}
-        onCloseLanguage={() => setLanguageOpen(false)}
-        onLocale={setLocale}
-        onSignOut={signOut}
-        onHome={() => navigate("/children")}
-      />
+      <>
+        <ChildrenHome
+          user={user}
+          children={children}
+          error={error}
+          createChildOpen={createChildOpen}
+          onCreate={openCreateChild}
+          onCloseCreate={() => setCreateChildOpen(false)}
+          onCreateChild={createChild}
+          onSelectChild={(item) => {
+            setChild(item);
+            navigate(`/children/${item.id}`);
+          }}
+          onEditChild={renameChild}
+          onDeleteChild={deleteChild}
+          languageOpen={languageOpen}
+          onOpenLanguage={() => setLanguageOpen(true)}
+          onCloseLanguage={() => setLanguageOpen(false)}
+          onLocale={setLocale}
+          onSignOut={signOut}
+          onHome={() => navigate("/children")}
+        />
+        {invitePreview && (
+          <InvitationPreviewModal
+            locale={user.locale}
+            invitation={invitePreview}
+            onAccept={acceptInvite}
+            onClose={clearInvite}
+          />
+        )}
+      </>
     );
   if (!child || homeOpen)
     return (
@@ -904,6 +1000,10 @@ export default function App() {
             label={t("Language")}
             onClick={() => setLanguageOpen(true)}
           />
+          <button className="leave-space" onClick={openLeave}>
+            <UserMinus size={18} />
+            {t("Leave care space")}
+          </button>
           <SidebarAccount
             displayName={user.display_name}
             detail={t(dash.role)}
@@ -944,6 +1044,13 @@ export default function App() {
                 className="primary"
                 onClick={() => {
                   setAt(localDateTime());
+                  setFeedingPortions([
+                    {
+                      kind: "breast_milk",
+                      deliveryMethod: "bottle",
+                      amountMl: "",
+                    },
+                  ]);
                   setLogOpen(true);
                 }}
               >
@@ -1009,7 +1116,7 @@ export default function App() {
                       {t("by")} {event.created_by}
                     </span>
                   </div>
-                  <p>{eventDetail(event)}</p>
+                  <p>{eventDetail(event, t)}</p>
                   {event.note && <small>“{event.note}”</small>}
                 </div>
                 <button className="more" onClick={() => openComments(event)}>
@@ -1034,11 +1141,13 @@ export default function App() {
           activities={dash.activities}
           at={at}
           values={values}
+          portions={feedingPortions}
           note={note}
           onClose={() => setLogOpen(false)}
           onActivity={setActivityId}
           onAt={setAt}
           onValues={setValues}
+          onPortions={setFeedingPortions}
           onNote={setNote}
           onSubmit={addLog}
         />
@@ -1064,7 +1173,134 @@ export default function App() {
           onRenameChild={renameChild}
         />
       )}
+      {leavePreview && (
+        <LeaveCareSpaceModal
+          locale={user.locale}
+          preview={leavePreview}
+          onClose={() => setLeavePreview(null)}
+          onConfirm={leaveChild}
+        />
+      )}
     </main>
+  );
+}
+
+function LeaveCareSpaceModal({
+  locale,
+  preview,
+  onClose,
+  onConfirm,
+}: {
+  locale: User["locale"];
+  preview: LeavePreview;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const t = (text: string) => translate(locale, text);
+  const message =
+    preview.action === "transfer" ? (
+      <>
+        {preview.successor_name}{" "}
+        {t("joined this care space first and will become the new owner.")}
+      </>
+    ) : preview.action === "delete" ? (
+      t(
+        "You are the only person in this care space. The child profile and care history will be permanently deleted.",
+      )
+    ) : (
+      t("You will no longer have access to this child's care space.")
+    );
+  const confirmLabel =
+    preview.action === "transfer"
+      ? t("Transfer and leave")
+      : preview.action === "delete"
+        ? t("Delete child profile")
+        : t("Leave care space");
+  return (
+    <ModalBackdrop onClose={onClose}>
+      <section className="log-modal leave-modal">
+        <button
+          className="close"
+          aria-label={t("Close leave confirmation")}
+          onClick={onClose}
+        >
+          <X size={20} />
+        </button>
+        <p className="eyebrow">{t("CARE SPACE MEMBERSHIP")}</p>
+        <h2>{t("Are you sure you want to leave?")}</h2>
+        <p className="leave-message">{message}</p>
+        <div className="invitation-actions">
+          <button className="text-button" onClick={onClose}>
+            {t("Cancel")}
+          </button>
+          <button
+            className={`primary ${preview.action === "delete" ? "danger-primary" : ""}`}
+            onClick={onConfirm}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </section>
+    </ModalBackdrop>
+  );
+}
+
+function InvitationPreviewModal({
+  locale,
+  invitation,
+  onAccept,
+  onClose,
+}: {
+  locale: User["locale"];
+  invitation: InvitationPreview;
+  onAccept: () => void;
+  onClose: () => void;
+}) {
+  const t = (text: string) => translate(locale, text);
+  const sentAt = new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(invitation.created_at));
+  return (
+    <ModalBackdrop onClose={onClose}>
+      <section className="log-modal invitation-preview">
+        <button
+          className="close"
+          aria-label={t("Close invitation")}
+          onClick={onClose}
+        >
+          <X size={20} />
+        </button>
+        <p className="eyebrow">{t("CHILD CARE INVITATION")}</p>
+        <h2>{t("Join a child's care space")}</h2>
+        <p className="invitation-question">
+          {t("Would you like to join the care space for")}{" "}
+          {invitation.child_name}?
+        </p>
+        <dl className="invitation-details">
+          <div>
+            <dt>{t("Invited by")}</dt>
+            <dd>{invitation.invited_by_name}</dd>
+          </div>
+          <div>
+            <dt>{t("Sent")}</dt>
+            <dd>{sentAt}</dd>
+          </div>
+          <div>
+            <dt>{t("Your role")}</dt>
+            <dd>{t(invitation.role)}</dd>
+          </div>
+        </dl>
+        <div className="invitation-actions">
+          <button className="text-button" onClick={onClose}>
+            {t("Not now")}
+          </button>
+          <button className="primary" onClick={onAccept}>
+            {t("Join care space")}
+          </button>
+        </div>
+      </section>
+    </ModalBackdrop>
   );
 }
 
@@ -1147,11 +1383,13 @@ function LogModal({
   activities,
   at,
   values,
+  portions,
   note,
   onClose,
   onActivity,
   onAt,
   onValues,
+  onPortions,
   onNote,
   onSubmit,
 }: {
@@ -1160,11 +1398,13 @@ function LogModal({
   activities: Activity[];
   at: string;
   values: Record<string, unknown>;
+  portions: FeedingPortionDraft[];
   note: string;
   onClose: () => void;
   onActivity: (id: string) => void;
   onAt: (value: string) => void;
   onValues: (value: Record<string, unknown>) => void;
+  onPortions: (value: FeedingPortionDraft[]) => void;
   onNote: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
 }) {
@@ -1199,48 +1439,150 @@ function LogModal({
             required
           />
         </label>
-        {activity?.fields.map((field) => (
-          <label key={field.id}>
-            {t(field.label)}
-            {field.unit ? ` (${field.unit})` : ""}
-            {field.field_type === "boolean" ? (
-              <input
-                type="checkbox"
-                checked={Boolean(values[field.field_key])}
-                onChange={(event) =>
-                  onValues({
-                    ...values,
-                    [field.field_key]: event.target.checked,
-                  })
-                }
-              />
-            ) : field.field_type === "select" && field.options.length ? (
-              <select
-                value={String(values[field.field_key] ?? "")}
-                onChange={(event) =>
-                  onValues({ ...values, [field.field_key]: event.target.value })
-                }
-              >
-                {field.options.map((option) => (
-                  <option key={option}>{t(option)}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type={
-                  field.field_type === "number" ||
-                  field.field_type === "duration"
-                    ? "number"
-                    : "text"
-                }
-                value={String(values[field.field_key] ?? "")}
-                onChange={(event) =>
-                  onValues({ ...values, [field.field_key]: event.target.value })
-                }
-              />
-            )}
-          </label>
-        ))}
+        {activity?.kind === "feeding" ? (
+          <fieldset className="feeding-portions">
+            <legend>{t("Milk portions")}</legend>
+            {portions.map((portion, index) => (
+              <div className="feeding-portion" key={index}>
+                <select
+                  aria-label={t("Milk type")}
+                  value={portion.kind}
+                  onChange={(event) =>
+                    onPortions(
+                      portions.map((item, itemIndex) =>
+                        itemIndex === index
+                          ? {
+                              ...item,
+                              kind: event.target
+                                .value as FeedingPortion["kind"],
+                            }
+                          : item,
+                      ),
+                    )
+                  }
+                >
+                  <option value="breast_milk">{t("Breast milk")}</option>
+                  <option value="formula">{t("Formula")}</option>
+                </select>
+                <select
+                  aria-label={t("Feeding method")}
+                  value={portion.deliveryMethod}
+                  onChange={(event) =>
+                    onPortions(
+                      portions.map((item, itemIndex) =>
+                        itemIndex === index
+                          ? {
+                              ...item,
+                              deliveryMethod: event.target
+                                .value as FeedingPortion["delivery_method"],
+                            }
+                          : item,
+                      ),
+                    )
+                  }
+                >
+                  <option value="bottle">{t("Bottle")}</option>
+                  <option value="breastfeeding">{t("Breastfeeding")}</option>
+                </select>
+                <label>
+                  <span className="sr-only">{t("Amount in ml")}</span>
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="0.1"
+                    required
+                    value={portion.amountMl}
+                    onChange={(event) =>
+                      onPortions(
+                        portions.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, amountMl: event.target.value }
+                            : item,
+                        ),
+                      )
+                    }
+                  />
+                  <span className="field-unit">ml</span>
+                </label>
+                {portions.length > 1 && (
+                  <button
+                    className="portion-remove"
+                    type="button"
+                    aria-label={t("Remove portion")}
+                    onClick={() =>
+                      onPortions(
+                        portions.filter((_, itemIndex) => itemIndex !== index),
+                      )
+                    }
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              className="text-button add-portion"
+              type="button"
+              onClick={() =>
+                onPortions([
+                  ...portions,
+                  { kind: "formula", deliveryMethod: "bottle", amountMl: "" },
+                ])
+              }
+            >
+              <Plus size={15} /> {t("Add portion")}
+            </button>
+          </fieldset>
+        ) : (
+          activity?.fields.map((field) => (
+            <label key={field.id}>
+              {t(field.label)}
+              {field.unit ? ` (${field.unit})` : ""}
+              {field.field_type === "boolean" ? (
+                <input
+                  type="checkbox"
+                  checked={Boolean(values[field.field_key])}
+                  onChange={(event) =>
+                    onValues({
+                      ...values,
+                      [field.field_key]: event.target.checked,
+                    })
+                  }
+                />
+              ) : field.field_type === "select" && field.options.length ? (
+                <select
+                  value={String(values[field.field_key] ?? "")}
+                  onChange={(event) =>
+                    onValues({
+                      ...values,
+                      [field.field_key]: event.target.value,
+                    })
+                  }
+                >
+                  {field.options.map((option) => (
+                    <option key={option}>{t(option)}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type={
+                    field.field_type === "number" ||
+                    field.field_type === "duration"
+                      ? "number"
+                      : "text"
+                  }
+                  value={String(values[field.field_key] ?? "")}
+                  onChange={(event) =>
+                    onValues({
+                      ...values,
+                      [field.field_key]: event.target.value,
+                    })
+                  }
+                />
+              )}
+            </label>
+          ))
+        )}
         <label>
           {t("Note")}
           <textarea

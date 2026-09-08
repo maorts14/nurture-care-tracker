@@ -90,6 +90,18 @@ CREATE TABLE activity_log (
 CREATE INDEX activity_log_timeline_idx ON activity_log (child_id, event_time DESC);
 CREATE INDEX activity_log_activity_time_idx ON activity_log (activity_id, event_time DESC);
 
+CREATE TABLE feeding_portion (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  log_id UUID NOT NULL REFERENCES activity_log(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('breast_milk', 'formula')),
+  delivery_method TEXT NOT NULL CHECK (delivery_method IN ('bottle', 'breastfeeding')),
+  amount_ml NUMERIC NOT NULL CHECK (amount_ml > 0),
+  position SMALLINT NOT NULL CHECK (position >= 0),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (log_id, position)
+);
+CREATE INDEX feeding_portion_log_idx ON feeding_portion (log_id, position);
+
 CREATE TABLE activity_measurement (
   log_id UUID NOT NULL REFERENCES activity_log(id) ON DELETE CASCADE,
   field_id UUID NOT NULL REFERENCES activity_field_definition(id) ON DELETE CASCADE,
