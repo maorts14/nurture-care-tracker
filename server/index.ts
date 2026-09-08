@@ -161,26 +161,37 @@ app.get("/api/auth/google/callback", async (request, response) => {
     response.status(400).send("Google login is not configured");
     return;
   }
-  const tokenResult = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      code,
-      client_id: process.env.GOOGLE_CLIENT_ID,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET,
-      redirect_uri: `${appUrl}/api/auth/google/callback`,
-      grant_type: "authorization_code",
-    }),
-  });
-  const tokenData = (await tokenResult.json()) as { access_token: string };
-  const profileResult = await fetch(
-    "https://www.googleapis.com/oauth2/v2/userinfo",
-    { headers: { Authorization: `Bearer ${tokenData.access_token}` } },
-  );
-  const profile = (await profileResult.json()) as {
-    email: string;
-    name: string;
-  };
+  let profile: { email: string; name: string };
+  try {
+    const tokenResult = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: process.env.GOOGLE_CLIENT_ID,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+        redirect_uri: `${appUrl}/api/auth/google/callback`,
+        grant_type: "authorization_code",
+      }),
+    });
+    if (!tokenResult.ok) {
+      response.status(502).send("Google sign-in could not be completed");
+      return;
+    }
+    const tokenData = (await tokenResult.json()) as { access_token: string };
+    const profileResult = await fetch(
+      "https://www.googleapis.com/oauth2/v2/userinfo",
+      { headers: { Authorization: `Bearer ${tokenData.access_token}` } },
+    );
+    if (!profileResult.ok) {
+      response.status(502).send("Google sign-in could not be completed");
+      return;
+    }
+    profile = (await profileResult.json()) as { email: string; name: string };
+  } catch {
+    response.status(502).send("Google sign-in could not be completed");
+    return;
+  }
   const result = await pool.query<{ id: string }>(
     "INSERT INTO app_user (email, password_hash, display_name, email_verified_at) VALUES ($1, '', $2, now()) ON CONFLICT (email) DO UPDATE SET display_name = EXCLUDED.display_name RETURNING id",
     [profile.email, profile.name],
@@ -205,6 +216,11 @@ app.get("/api/me", async (request, response) => {
     "SELECT id, email, display_name, locale FROM app_user WHERE id = $1",
     [session.userId],
   );
+  if (!result.rowCount) {
+    response.clearCookie("nurture_session");
+    response.status(401).json({ error: "Sign in is required" });
+    return;
+  }
   response.json(result.rows[0]);
 });
 app.get("/api/children", async (request, response) => {
