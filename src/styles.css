@@ -971,6 +971,56 @@ nav em {
 .log-submit {
   margin-top: 12px;
 }
+.manager .submit {
+  margin-top: 14px;
+}
+.invite-methods {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+.invite-methods button {
+  min-height: 40px;
+  border: 1px solid #e1dad0;
+  border-radius: 8px;
+  color: #625b54;
+  font-size: 12px;
+}
+.invite-methods button.selected {
+  border-color: #f3654b;
+  background: #fff1ed;
+  color: #bd4835;
+  font-weight: 700;
+}
+.invite-link {
+  margin-top: 16px;
+}
+.invite-link-input {
+  position: relative;
+  display: block;
+}
+.invite-link textarea {
+  width: 100%;
+  min-height: 52px;
+  padding-inline-end: 48px;
+  resize: none;
+}
+.invite-copy {
+  position: absolute;
+  inset-inline-end: 7px;
+  top: 50%;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  transform: translateY(-50%);
+  border-radius: 7px;
+  color: #6b625b;
+}
+.invite-copy:hover {
+  background: #f3efea;
+}
 @keyframes rise {
   from {
     opacity: 0;
@@ -1653,17 +1703,41 @@ nav em {
   .workspace {
     padding-bottom: 38px;
   }
+  .topbar {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 0 12px;
+  }
+  .topbar-title {
+    display: contents;
+  }
   .mobile-menu {
     display: inline-grid;
     place-items: center;
+    grid-column: 1;
+    grid-row: 1;
     width: 40px;
     height: 40px;
-    margin: 0 0 12px;
+    margin: 0;
     padding: 0;
     border: 1px solid #e4ded6;
     border-radius: 10px;
     background: #fff;
     color: #5a5550;
+  }
+  .topbar h1 {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: block;
+    width: 100%;
+    margin: 14px 0 0;
+    font-size: 26px;
+    line-height: 1.18;
+  }
+  .top-actions {
+    grid-column: 3;
+    grid-row: 1;
   }
   .sidebar-scrim {
     display: block;

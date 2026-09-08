@@ -15,6 +15,7 @@ import {
   Bell,
   Check,
   Clock3,
+  Copy,
   Droplets,
   FileDown,
   HeartPulse,
@@ -884,6 +885,16 @@ export default function App() {
             <Settings2 size={18} />
             {t("Manage care")}
           </button>
+          <button onClick={() => setPanel("gap")}>
+            <HeartPulse size={18} />
+            {t("Declare care gap")}
+          </button>
+          {owner && (
+            <button onClick={() => setPanel("invite")}>
+              <Users size={18} />
+              {t("Invite caregiver")}
+            </button>
+          )}
           <button onClick={() => navigate("/children")}>
             <Users size={18} />
             {t("Children")}
@@ -903,7 +914,7 @@ export default function App() {
       </aside>
       <section className="workspace">
         <header className="topbar">
-          <div>
+          <div className="topbar-title">
             <button
               className="mobile-menu"
               aria-label={t("Open navigation")}
@@ -970,8 +981,6 @@ export default function App() {
           onOpen={() => setPanel("reminder")}
           onComplete={completeReminder}
           onDelete={deleteReminder}
-          onGap={() => setPanel("gap")}
-          onInvite={() => setPanel("invite")}
         />
         <section className="timeline-area">
           <div className="section-head">
@@ -1066,8 +1075,6 @@ function UpcomingList({
   onOpen,
   onComplete,
   onDelete,
-  onGap,
-  onInvite,
 }: {
   reminders: Reminder[];
   locale: User["locale"];
@@ -1075,8 +1082,6 @@ function UpcomingList({
   onOpen: () => void;
   onComplete: (reminder: Reminder) => void;
   onDelete: (reminder: Reminder) => void;
-  onGap: () => void;
-  onInvite: () => void;
 }) {
   const t = (text: string) => translate(locale, text);
   return (
@@ -1132,17 +1137,6 @@ function UpcomingList({
           {t("No upcoming reminders. Add one whenever you need it.")}
         </p>
       )}
-      <div className="upcoming-actions">
-        <button className="text-button" onClick={onGap}>
-          ✦ {t("Declare care gap")}
-        </button>
-        {owner && (
-          <button className="text-button" onClick={onInvite}>
-            <Users size={15} />
-            {t("Invite caregiver")}
-          </button>
-        )}
-      </div>
     </section>
   );
 }
@@ -1570,6 +1564,7 @@ function ManageModal({
   onRenameChild: (child: Child) => void;
 }) {
   const t = (text: string) => translate(locale, text);
+  const [inviteMethod, setInviteMethod] = useState<"email" | "link">("email");
   const fields = (
     <>
       <label>
@@ -1713,10 +1708,36 @@ function ManageModal({
         {panel === "invite" && (
           <form onSubmit={onInvite}>
             <h2>{t("Invite caregiver")}</h2>
-            <label>
-              {t("Email")}
-              <input name="email" type="email" required />
-            </label>
+            <div
+              className="invite-methods"
+              role="group"
+              aria-label={t("Invitation method")}
+            >
+              <button
+                className={inviteMethod === "email" ? "selected" : ""}
+                type="button"
+                onClick={() => setInviteMethod("email")}
+              >
+                {t("Invite by email")}
+              </button>
+              <button
+                className={inviteMethod === "link" ? "selected" : ""}
+                type="button"
+                onClick={() => setInviteMethod("link")}
+              >
+                {t("Invite by link")}
+              </button>
+            </div>
+            {inviteMethod === "email" ? (
+              <label>
+                {t("Email")}
+                <input name="email" type="email" required />
+              </label>
+            ) : (
+              <p className="time-hint">
+                {t("The link works once and expires in 7 days.")}
+              </p>
+            )}
             <label>
               {t("Role")}
               <select name="role">
@@ -1724,8 +1745,28 @@ function ManageModal({
                 <option value="viewer">{t("Viewer")}</option>
               </select>
             </label>
-            <button className="primary submit">{t("Create invitation")}</button>
-            {inviteUrl && <textarea readOnly value={inviteUrl} />}
+            <button className="primary submit">
+              {t(inviteMethod === "link" ? "Create link" : "Create invitation")}
+            </button>
+            {inviteUrl && (
+              <div className="invite-link">
+                <label>
+                  {t("Invitation link")}
+                  <span className="invite-link-input">
+                    <textarea readOnly value={inviteUrl} />
+                    <button
+                      className="invite-copy"
+                      type="button"
+                      aria-label={t("Copy link")}
+                      title={t("Copy link")}
+                      onClick={() => navigator.clipboard.writeText(inviteUrl)}
+                    >
+                      <Copy size={16} />
+                    </button>
+                  </span>
+                </label>
+              </div>
+            )}
           </form>
         )}
         {panel === "notes" && (

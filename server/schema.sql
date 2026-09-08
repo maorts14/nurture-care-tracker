@@ -34,7 +34,7 @@ CREATE TABLE child_membership (
 CREATE TABLE child_invitation (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   child_id UUID NOT NULL REFERENCES child(id) ON DELETE CASCADE,
-  email TEXT NOT NULL,
+  email TEXT,
   role child_role NOT NULL DEFAULT 'caregiver',
   token UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
   invited_by UUID NOT NULL REFERENCES app_user(id),

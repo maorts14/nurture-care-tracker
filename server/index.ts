@@ -135,12 +135,10 @@ app.get("/api/auth/google", (request, response) => {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const appUrl = process.env.APP_URL ?? "http://localhost:8080";
   if (!clientId) {
-    response
-      .status(503)
-      .json({
-        error:
-          "Google login needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the server environment",
-      });
+    response.status(503).json({
+      error:
+        "Google login needs GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in the server environment",
+    });
     return;
   }
   const state = jwt.sign({ returnTo: "/" }, secret, { expiresIn: "10m" });
@@ -524,10 +522,11 @@ app.post("/api/children/:childId/invitations", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
   const { childId } = request.params;
-  const { email, role } = request.body as {
-    email: string;
+  const { email: rawEmail, role } = request.body as {
+    email?: string;
     role: "caregiver" | "viewer";
   };
+  const email = rawEmail?.trim().toLowerCase() || null;
   const access = await membership(childId, session.userId);
   if (access.rows[0]?.role !== "owner") {
     response.status(403).json({ error: "Owner access is required" });
@@ -537,12 +536,10 @@ app.post("/api/children/:childId/invitations", async (request, response) => {
     "INSERT INTO child_invitation (child_id, email, role, invited_by) VALUES ($1, $2, $3, $4) RETURNING token",
     [childId, email, role, session.userId],
   );
-  response
-    .status(201)
-    .json({
-      token: invite.rows[0].token,
-      acceptUrl: `/?invite=${invite.rows[0].token}`,
-    });
+  response.status(201).json({
+    token: invite.rows[0].token,
+    acceptUrl: `/?invite=${invite.rows[0].token}`,
+  });
 });
 app.post("/api/invitations/:token/accept", async (request, response) => {
   const session = requireSession(request, response);
@@ -552,7 +549,7 @@ app.post("/api/invitations/:token/accept", async (request, response) => {
     child_id: string;
     role: "caregiver" | "viewer";
   }>(
-    `SELECT invitation.child_id, invitation.role FROM child_invitation AS invitation JOIN app_user ON app_user.email = invitation.email WHERE invitation.token = $1 AND invitation.accepted_at IS NULL AND invitation.expires_at > now() AND app_user.id = $2`,
+    `SELECT invitation.child_id, invitation.role FROM child_invitation AS invitation JOIN app_user ON app_user.id = $2 WHERE invitation.token = $1 AND invitation.accepted_at IS NULL AND invitation.expires_at > now() AND (invitation.email IS NULL OR lower(invitation.email) = lower(app_user.email))`,
     [token, session.userId],
   );
   if (invite.rowCount !== 1) {
