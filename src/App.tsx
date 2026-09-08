@@ -4,6 +4,13 @@ import { AnalyticsView } from "./AnalyticsView";
 import { NotesPage } from "./NotesPage";
 import { CommentsPage } from "./CommentsPage";
 import { RemindersPage } from "./RemindersPage";
+import { CreateChildModal } from "./components/CreateChildModal";
+import { LanguageControl } from "./components/LanguageControl";
+import { LanguagePicker } from "./components/LanguagePicker";
+import { ModalBackdrop } from "./components/ModalBackdrop";
+import { NurtureBrand } from "./components/NurtureBrand";
+import { SidebarAccount } from "./components/SidebarAccount";
+import { translate } from "./i18n";
 import {
   Bell,
   Check,
@@ -11,8 +18,6 @@ import {
   Droplets,
   FileDown,
   HeartPulse,
-  Languages,
-  LogOut,
   Menu,
   MessageCircle,
   MoreHorizontal,
@@ -139,7 +144,7 @@ const hebrewLabels: Record<string, string> = {
   "Care today": "טיפול היום",
   "live from PostgreSQL": "נתונים חיים",
   "Care history": "היסטוריית טיפול",
-  "Children & people": "ילדים ואנשים",
+  Children: "ילדים",
   "Invite caregiver": "הזמנת מטפל",
   "Declare care gap": "הכרזת הפסקת טיפול",
   "Exclude a deliberate tracking break.": "החרגת הפסקה מכוונת מהמעקב.",
@@ -233,7 +238,8 @@ export default function App() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [comment, setComment] = useState("");
   const [inviteUrl, setInviteUrl] = useState("");
-  const t = txt[user?.locale ?? "en"];
+  const locale = user?.locale ?? "en";
+  const t = (text: string) => translate(locale, text);
   const owner = dash?.role === "owner";
   const write = dash?.role !== "viewer";
   const events = dash?.timeline ?? [];
@@ -331,7 +337,8 @@ export default function App() {
     const texts: Text[] = [];
     while (walker.nextNode()) texts.push(walker.currentNode as Text);
     texts.forEach((text) => {
-      const translation = hebrewLabels[text.data.trim()];
+      const source = text.data.trim();
+      const translation = hebrewLabels[source] ?? translate("he", source);
       if (translation)
         text.data = text.data.replace(text.data.trim(), translation);
     });
@@ -434,7 +441,7 @@ export default function App() {
     }
   }
   async function renameChild(item: Child) {
-    const name = prompt("Child's name", item.name);
+    const name = prompt(t("Child's name"), item.name);
     if (name === null || !name.trim()) return;
     await api(`/api/children/${item.id}`, {
       method: "PUT",
@@ -445,7 +452,9 @@ export default function App() {
   async function deleteChild(item: Child) {
     if (
       !confirm(
-        `Delete ${item.name}'s profile? Its existing care history will be archived.`,
+        locale === "he"
+          ? `למחוק את הפרופיל של ${item.name}? היסטוריית הטיפול הקיימת תישמר בארכיון.`
+          : `Delete ${item.name}'s profile? Its existing care history will be archived.`,
       )
     )
       return;
@@ -516,7 +525,9 @@ export default function App() {
     if (
       !child ||
       !confirm(
-        "Remove this activity from future logging? Existing history stays in exports.",
+        t(
+          "Remove this activity from future logging? Existing history stays in exports.",
+        ),
       )
     )
       return;
@@ -552,7 +563,7 @@ export default function App() {
     const kind = String(form.get("kind"));
     const when = String(form.get("when"));
     if (kind === "one_time" && !when)
-      throw new Error("Choose a date and time.");
+      throw new Error(t("Choose a date and time."));
     await api(`/api/children/${child.id}/reminders`, {
       method: "POST",
       body: JSON.stringify({
@@ -569,16 +580,16 @@ export default function App() {
   }
   async function updateReminder(item: Reminder) {
     if (!child) return;
-    const title = prompt("Reminder title", item.title);
+    const title = prompt(t("Reminder title"), item.title);
     if (title === null || !title.trim()) return;
     const schedule =
       item.kind === "interval"
         ? prompt(
-            "Repeat every how many hours?",
+            t("Repeat every how many hours?"),
             String((item.interval_minutes ?? 60) / 60),
           )
         : prompt(
-            "Date and time (YYYY-MM-DDTHH:MM)",
+            t("Date and time (YYYY-MM-DDTHH:MM)"),
             item.scheduled_for
               ? item.scheduled_for.slice(0, 16)
               : localDateTime(),
@@ -604,7 +615,7 @@ export default function App() {
     await loadDash(child.id);
   }
   async function deleteReminder(item: Reminder) {
-    if (!child || !confirm("Delete this reminder?")) return;
+    if (!child || !confirm(t("Delete this reminder?"))) return;
     await api(`/api/reminders/${item.id}`, { method: "DELETE" });
     await loadDash(child.id);
   }
@@ -654,7 +665,7 @@ export default function App() {
     await loadNotes();
   }
   async function editNote(item: Note) {
-    const body = prompt("Edit note", item.body);
+    const body = prompt(t("Edit note"), item.body);
     if (body === null) return;
     await api(`/api/notes/${item.id}`, {
       method: "PUT",
@@ -663,7 +674,7 @@ export default function App() {
     await loadNotes();
   }
   async function deleteNote(item: Note) {
-    if (!confirm("Delete this note?")) return;
+    if (!confirm(t("Delete this note?"))) return;
     await api(`/api/notes/${item.id}`, { method: "DELETE" });
     await loadNotes();
   }
@@ -683,7 +694,7 @@ export default function App() {
   }
   async function editComment(item: Comment) {
     if (!selected) return;
-    const body = prompt("Edit comment", item.body);
+    const body = prompt(t("Edit comment"), item.body);
     if (body === null) return;
     await api(`/api/comments/${item.id}`, {
       method: "PUT",
@@ -692,12 +703,16 @@ export default function App() {
     setComments(await api<Comment[]>(`/api/logs/${selected.id}/comments`));
   }
   async function deleteComment(item: Comment) {
-    if (!selected || !confirm("Delete this comment?")) return;
+    if (!selected || !confirm(t("Delete this comment?"))) return;
     await api(`/api/comments/${item.id}`, { method: "DELETE" });
     setComments(await api<Comment[]>(`/api/logs/${selected.id}/comments`));
   }
   async function deleteLog() {
-    if (!selected || !child || !confirm("Permanently delete this care record?"))
+    if (
+      !selected ||
+      !child ||
+      !confirm(t("Permanently delete this care record?"))
+    )
       return;
     await api(`/api/logs/${selected.id}`, { method: "DELETE" });
     setSelected(null);
@@ -712,15 +727,24 @@ export default function App() {
     setUser({ ...user, locale });
     setLanguageOpen(false);
   };
+  const openCreateChild = () => {
+    setError("");
+    setCreateChildOpen(true);
+  };
+  const signOut = async () => {
+    await api("/api/auth/sign-out", { method: "POST" });
+    setUser(null);
+    setChildren([]);
+    setChild(null);
+    setHomeOpen(false);
+    navigate("/", true);
+  };
   if (loading) return <div className="loading-screen">Loading Nurture…</div>;
   if (!user)
     return (
       <div className="sign-in-shell">
         <form className="sign-in" onSubmit={login}>
-          <div className="brand">
-            <span className="brand-mark">n</span>
-            <span>Nurture</span>
-          </div>
+          <NurtureBrand />
           <p className="eyebrow">SHARED CHILD CARE</p>
           <h1>
             {auth === "sign-in" ? "Welcome back." : "Start your family space."}
@@ -781,10 +805,7 @@ export default function App() {
         children={children}
         error={error}
         createChildOpen={createChildOpen}
-        onCreate={() => {
-          setError("");
-          setCreateChildOpen(true);
-        }}
+        onCreate={openCreateChild}
         onCloseCreate={() => setCreateChildOpen(false)}
         onCreateChild={createChild}
         onSelectChild={(item) => {
@@ -793,17 +814,12 @@ export default function App() {
         }}
         onEditChild={renameChild}
         onDeleteChild={deleteChild}
-        onClose={() => {
-          if (child) navigate(`/children/${child.id}`);
-        }}
-        onSignOut={() =>
-          api("/api/auth/sign-out", { method: "POST" }).then(() => {
-            setUser(null);
-            setChildren([]);
-            setChild(null);
-            navigate("/", true);
-          })
-        }
+        languageOpen={languageOpen}
+        onOpenLanguage={() => setLanguageOpen(true)}
+        onCloseLanguage={() => setLanguageOpen(false)}
+        onLocale={setLocale}
+        onSignOut={signOut}
+        onHome={() => navigate("/children")}
       />
     );
   if (!child || homeOpen)
@@ -812,20 +828,15 @@ export default function App() {
         user={user}
         error={error}
         createChildOpen={createChildOpen}
-        onCreate={() => {
-          setError("");
-          setCreateChildOpen(true);
-        }}
+        onCreate={openCreateChild}
         onCloseCreate={() => setCreateChildOpen(false)}
         onCreateChild={createChild}
-        onSignOut={() =>
-          api("/api/auth/sign-out", { method: "POST" }).then(() => {
-            setUser(null);
-            setChildren([]);
-            setChild(null);
-            setHomeOpen(false);
-          })
-        }
+        languageOpen={languageOpen}
+        onOpenLanguage={() => setLanguageOpen(true)}
+        onCloseLanguage={() => setLanguageOpen(false)}
+        onLocale={setLocale}
+        onSignOut={signOut}
+        onHome={() => navigate("/children")}
       />
     );
   if (!dash) return <div className="loading-screen">Loading family space…</div>;
@@ -834,6 +845,7 @@ export default function App() {
       <AnalyticsView
         child={child}
         dashboard={dash}
+        locale={user.locale}
         onBack={() => setPage("timeline")}
       />
     );
@@ -880,17 +892,16 @@ export default function App() {
       />
     );
   return (
-    <main className={`app-shell ${mobileSidebarOpen ? "mobile-sidebar-open" : ""}`}>
+    <main
+      className={`app-shell ${mobileSidebarOpen ? "mobile-sidebar-open" : ""}`}
+    >
       <button
         className="sidebar-scrim"
-        aria-label="Close navigation"
+        aria-label={t("Close navigation")}
         onClick={() => setMobileSidebarOpen(false)}
       />
       <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-mark">n</span>
-          <span>Nurture</span>
-        </div>
+        <NurtureBrand onClick={() => navigate("/children")} />
         <label className="child-switch">
           <span className="avatar">{child.name[0]}</span>
           <span>
@@ -916,51 +927,41 @@ export default function App() {
         <nav onClickCapture={() => setMobileSidebarOpen(false)}>
           <button className="nav-active">
             <Clock3 size={18} />
-            {t.timeline}
+            {t("Timeline")}
           </button>
           <button onClick={() => setPage("insights")}>
             <Sparkles size={18} />
-            {t.insights}
+            {t("Insights")}
           </button>
           <button onClick={() => setPanel("reminder")}>
             <Bell size={18} />
-            {t.upcoming}
+            {t("Upcoming")}
             <em>{dash.reminders.length}</em>
           </button>
         </nav>
-        <div className="sidebar-bottom" onClickCapture={() => setMobileSidebarOpen(false)}>
+        <div
+          className="sidebar-bottom"
+          onClickCapture={() => setMobileSidebarOpen(false)}
+        >
           <button onClick={() => setPanel("activity")}>
             <Settings2 size={18} />
-            {t.manage}
+            {t("Manage care")}
           </button>
-          <button onClick={() => setPanel("children")}>
+          <button onClick={() => navigate("/children")}>
             <Users size={18} />
-            Children & people
+            {t("Children")}
           </button>
-          <button className="language-button" onClick={() => setLanguageOpen(true)}>
-            <Languages size={18} />
-            Language: {user.locale.toUpperCase()}
-          </button>
-          <div className="user">
-            <span className="avatar you">{user.display_name[0]}</span>
-            <span>
-              <strong>{user.display_name}</strong>
-              <small>{dash.role}</small>
-            </span>
-            <button
-              className="sidebar-sign-out"
-              onClick={() =>
-                api("/api/auth/sign-out", { method: "POST" }).then(() => {
-                  setUser(null);
-                  setChildren([]);
-                  setChild(null);
-                })
-              }
-            >
-              <LogOut size={16} />
-              <span>Sign out</span>
-            </button>
-          </div>
+          <LanguageControl
+            locale={user.locale}
+            label={t("Language")}
+            onClick={() => setLanguageOpen(true)}
+          />
+          <SidebarAccount
+            displayName={user.display_name}
+            detail={dash.role}
+            signOutLabel={t("Sign out")}
+            onSignOut={signOut}
+          />
         </div>
       </aside>
       <section className="workspace">
@@ -968,18 +969,22 @@ export default function App() {
           <div>
             <button
               className="mobile-menu"
-              aria-label="Open navigation"
+              aria-label={t("Open navigation")}
               aria-expanded={mobileSidebarOpen}
               onClick={() => setMobileSidebarOpen(true)}
             >
               <Menu size={21} />
             </button>
-            <h1>{child.name}’s timeline</h1>
+            <h1>
+              {locale === "he"
+                ? `ציר הזמן של ${child.name}`
+                : `${child.name}’s timeline`}
+            </h1>
           </div>
           <div className="top-actions">
             <button
               className="icon-button"
-              title="Export CSV"
+              title={t("Export CSV")}
               onClick={() =>
                 window.open(`/api/children/${child.id}/export.csv`, "_blank")
               }
@@ -995,29 +1000,31 @@ export default function App() {
                 }}
               >
                 <Plus size={18} />
-                {t.log}
+                {t("Log care")}
               </button>
             )}
           </div>
         </header>
         <section className="summary-strip">
           <div>
-            <p>Last feeding</p>
+            <p>{t("Last feeding")}</p>
             <strong>
               {lastFeed ? clock(lastFeed.event_time, user.locale) : "—"}
             </strong>
           </div>
           <div>
-            <p>Next expected</p>
+            <p>{t("Next expected")}</p>
             <strong>
               {expected ? clock(expected.toISOString(), user.locale) : "—"}
             </strong>
-            <span className="soft-warning">from its reminder</span>
+            <span className="soft-warning">{t("from its reminder")}</span>
           </div>
           <div>
-            <p>Care today</p>
-            <strong>{events.length} events</strong>
-            <span>live from PostgreSQL</span>
+            <p>{t("Care today")}</p>
+            <strong>
+              {events.length} {t("events")}
+            </strong>
+            <span>{t("live from PostgreSQL")}</span>
           </div>
         </section>
         <UpcomingList
@@ -1032,7 +1039,7 @@ export default function App() {
         />
         <section className="timeline-area">
           <div className="section-head">
-            <h2>Care history</h2>
+            <h2>{t("Care history")}</h2>
             <button
               className="text-button"
               onClick={() => {
@@ -1040,7 +1047,7 @@ export default function App() {
                 loadNotes();
               }}
             >
-              {t.notes}
+              {t("Notes")}
             </button>
           </div>
           <div className="timeline-list">
@@ -1053,7 +1060,9 @@ export default function App() {
                 <div className="event-content">
                   <div className="event-title">
                     <h3>{event.activity_name}</h3>
-                    <span>by {event.created_by}</span>
+                    <span>
+                      {t("by")} {event.created_by}
+                    </span>
                   </div>
                   <p>{eventDetail(event)}</p>
                   {event.note && <small>“{event.note}”</small>}
@@ -1067,18 +1076,11 @@ export default function App() {
         </section>
       </section>
       {languageOpen && (
-        <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setLanguageOpen(false); }}>
-          <section className="log-modal language-modal" role="dialog" aria-modal="true" aria-labelledby="language-title">
-            <button className="close" aria-label="Close language picker" onClick={() => setLanguageOpen(false)}><X size={20} /></button>
-            <p className="eyebrow">PREFERENCES</p>
-            <h2 id="language-title">Language</h2>
-            <p className="time-hint">Choose the language for your family space.</p>
-            <div className="language-options">
-              <button className={user.locale === "en" ? "selected" : ""} onClick={() => setLocale("en")}>English <small>EN</small></button>
-              <button className={user.locale === "he" ? "selected" : ""} onClick={() => setLocale("he")}>עברית <small>HE</small></button>
-            </div>
-          </section>
-        </div>
+        <LanguagePicker
+          locale={user.locale}
+          onClose={() => setLanguageOpen(false)}
+          onSelect={setLocale}
+        />
       )}
       {logOpen && (
         <LogModal
@@ -1119,20 +1121,92 @@ export default function App() {
   );
 }
 
-function UpcomingList({ reminders, locale, owner, onOpen, onComplete, onDelete, onGap, onInvite }: { reminders: Reminder[]; locale: User["locale"]; owner: boolean; onOpen: () => void; onComplete: (reminder: Reminder) => void; onDelete: (reminder: Reminder) => void; onGap: () => void; onInvite: () => void }) {
-  return <section className="upcoming-list" aria-label="Upcoming care">
-    <div className="section-head upcoming-list-head">
-      <div><h2>Upcoming</h2></div>
-      <button className="text-button" onClick={onOpen}>Manage reminders <Plus size={15} /></button>
-    </div>
-    {reminders.length ? <div className="upcoming-items">{reminders.map((reminder) => <article className="due-item" key={reminder.id}>
-      <span className="due-icon">{reminder.kind === "one_time" ? <HeartPulse size={17} /> : <Utensils size={17} />}</span>
-      <div><h3>{reminder.title}</h3><p>{reminder.kind === "one_time" && reminder.scheduled_for ? clock(reminder.scheduled_for, locale) : `every ${Math.round((reminder.interval_minutes ?? 0) / 60)}h`}</p></div>
-      <button className="check" title={`Complete ${reminder.title}`} onClick={() => onComplete(reminder)}><Check size={13} /></button>
-      {owner && <button className="more" title={`Delete ${reminder.title}`} onClick={() => onDelete(reminder)}><Trash2 size={14} /></button>}
-    </article>)}</div> : <p className="upcoming-empty">No upcoming reminders. Add one whenever you need it.</p>}
-    <div className="upcoming-actions"><button className="text-button" onClick={onGap}>✦ Declare care gap</button>{owner && <button className="text-button" onClick={onInvite}><Users size={15} />Invite caregiver</button>}</div>
-  </section>;
+function UpcomingList({
+  reminders,
+  locale,
+  owner,
+  onOpen,
+  onComplete,
+  onDelete,
+  onGap,
+  onInvite,
+}: {
+  reminders: Reminder[];
+  locale: User["locale"];
+  owner: boolean;
+  onOpen: () => void;
+  onComplete: (reminder: Reminder) => void;
+  onDelete: (reminder: Reminder) => void;
+  onGap: () => void;
+  onInvite: () => void;
+}) {
+  const t = (text: string) => translate(locale, text);
+  return (
+    <section className="upcoming-list" aria-label={t("Upcoming care")}>
+      <div className="section-head upcoming-list-head">
+        <div>
+          <h2>Upcoming</h2>
+        </div>
+        <button className="text-button" onClick={onOpen}>
+          Manage reminders <Plus size={15} />
+        </button>
+      </div>
+      {reminders.length ? (
+        <div className="upcoming-items">
+          {reminders.map((reminder) => (
+            <article className="due-item" key={reminder.id}>
+              <span className="due-icon">
+                {reminder.kind === "one_time" ? (
+                  <HeartPulse size={17} />
+                ) : (
+                  <Utensils size={17} />
+                )}
+              </span>
+              <div>
+                <h3>{reminder.title}</h3>
+                <p>
+                  {reminder.kind === "one_time" && reminder.scheduled_for
+                    ? clock(reminder.scheduled_for, locale)
+                    : `every ${Math.round((reminder.interval_minutes ?? 0) / 60)}h`}
+                </p>
+              </div>
+              <button
+                className="check"
+                title={`${t("Complete")} ${reminder.title}`}
+                onClick={() => onComplete(reminder)}
+              >
+                <Check size={13} />
+              </button>
+              {owner && (
+                <button
+                  className="more"
+                  title={`${t("Delete")} ${reminder.title}`}
+                  onClick={() => onDelete(reminder)}
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="upcoming-empty">
+          No upcoming reminders. Add one whenever you need it.
+        </p>
+      )}
+      <div className="upcoming-actions">
+        <button className="text-button" onClick={onGap}>
+          ✦ Declare care gap
+        </button>
+        {owner && (
+          <button className="text-button" onClick={onInvite}>
+            <Users size={15} />
+            Invite caregiver
+          </button>
+        )}
+      </div>
+    </section>
+  );
 }
 
 function LogModal({
@@ -1161,7 +1235,7 @@ function LogModal({
   onSubmit: (event: FormEvent) => void;
 }) {
   return (
-    <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <ModalBackdrop onClose={onClose}>
       <form className="log-modal" onSubmit={onSubmit}>
         <button type="button" className="close" onClick={onClose}>
           <X size={20} />
@@ -1241,7 +1315,57 @@ function LogModal({
         </label>
         <button className="primary submit">Save</button>
       </form>
-    </div>
+    </ModalBackdrop>
+  );
+}
+
+function HomeSidebar({
+  user,
+  onHome,
+  onOpenLanguage,
+  onSignOut,
+}: {
+  user: User;
+  onHome: () => void;
+  onOpenLanguage: () => void;
+  onSignOut: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const close = () => setOpen(false);
+  return (
+    <>
+      <button
+        className="home-menu"
+        aria-label="Open navigation"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+      >
+        <Menu size={21} />
+      </button>
+      <button
+        className={`home-sidebar-scrim ${open ? "visible" : ""}`}
+        aria-label="Close navigation"
+        onClick={close}
+      />
+      <aside className={`home-sidebar ${open ? "open" : ""}`}>
+        <NurtureBrand onClick={onHome} />
+        <div className="sidebar-bottom">
+          <LanguageControl
+            locale={user.locale}
+            label="Language"
+            onClick={() => {
+              close();
+              onOpenLanguage();
+            }}
+          />
+          <SidebarAccount
+            displayName={user.display_name}
+            signOutLabel="Sign out"
+            onSignOut={onSignOut}
+          />
+        </div>
+      </aside>
+    </>
   );
 }
 
@@ -1252,7 +1376,12 @@ function Home({
   onCreate,
   onCloseCreate,
   onCreateChild,
+  languageOpen,
+  onOpenLanguage,
+  onCloseLanguage,
+  onLocale,
   onSignOut,
+  onHome,
 }: {
   user: User;
   error: string;
@@ -1260,27 +1389,21 @@ function Home({
   onCreate: () => void;
   onCloseCreate: () => void;
   onCreateChild: (event: FormEvent<HTMLFormElement>) => void;
+  languageOpen: boolean;
+  onOpenLanguage: () => void;
+  onCloseLanguage: () => void;
+  onLocale: (locale: User["locale"]) => void;
   onSignOut: () => void;
+  onHome: () => void;
 }) {
   return (
     <main className="home-shell">
-      <header className="home-header">
-        <div className="brand">
-          <span className="brand-mark">n</span>
-          <span>Nurture</span>
-        </div>
-        <div className="home-account">
-          <span className="avatar you">{user.display_name[0]}</span>
-          <span>
-            <strong>{user.display_name}</strong>
-            <small>{user.email}</small>
-          </span>
-          <button className="home-sign-out" onClick={onSignOut}>
-            <LogOut size={17} />
-            <span>Sign out</span>
-          </button>
-        </div>
-      </header>
+      <HomeSidebar
+        user={user}
+        onHome={onHome}
+        onOpenLanguage={onOpenLanguage}
+        onSignOut={onSignOut}
+      />
       <section className="empty-home">
         <p className="eyebrow">YOUR FAMILY SPACE</p>
         <h1>
@@ -1298,39 +1421,18 @@ function Home({
         </button>
       </section>
       {createChildOpen && (
-        <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onCloseCreate(); }}>
-          <form
-            className="log-modal create-child-modal"
-            onSubmit={onCreateChild}
-          >
-            <button type="button" className="close" onClick={onCloseCreate}>
-              <X size={20} />
-            </button>
-            <p className="eyebrow">NEW CHILD PROFILE</p>
-            <h2>Add a child</h2>
-            <p className="time-hint">
-              You can add more children and invite caregivers later.
-            </p>
-            <label>
-              Child’s name
-              <input name="name" autoFocus required />
-            </label>
-            <label>
-              Timezone
-              <input
-                name="timezone"
-                defaultValue={Intl.DateTimeFormat().resolvedOptions().timeZone}
-                required
-              />
-            </label>
-            <label>
-              Birth date <small>(optional)</small>
-              <input name="birthDate" type="date" />
-            </label>
-            {error && <p className="form-error">{error}</p>}
-            <button className="primary submit">Create child</button>
-          </form>
-        </div>
+        <CreateChildModal
+          error={error}
+          onClose={onCloseCreate}
+          onSubmit={onCreateChild}
+        />
+      )}
+      {languageOpen && (
+        <LanguagePicker
+          locale={user.locale}
+          onClose={onCloseLanguage}
+          onSelect={onLocale}
+        />
       )}
     </main>
   );
@@ -1347,8 +1449,12 @@ function ChildrenHome({
   onSelectChild,
   onEditChild,
   onDeleteChild,
-  onClose,
+  languageOpen,
+  onOpenLanguage,
+  onCloseLanguage,
+  onLocale,
   onSignOut,
+  onHome,
 }: {
   user: User;
   children: Child[];
@@ -1360,34 +1466,27 @@ function ChildrenHome({
   onSelectChild: (child: Child) => void;
   onEditChild: (child: Child) => void;
   onDeleteChild: (child: Child) => void;
-  onClose: () => void;
+  languageOpen: boolean;
+  onOpenLanguage: () => void;
+  onCloseLanguage: () => void;
+  onLocale: (locale: User["locale"]) => void;
   onSignOut: () => void;
+  onHome: () => void;
 }) {
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   return (
     <main className="home-shell">
-      <header className="home-header">
-        <div className="brand">
-          <span className="brand-mark">n</span>
-          <span>Nurture</span>
-        </div>
-        <div className="home-account">
-          <span className="avatar you">{user.display_name[0]}</span>
-          <span>
-            <strong>{user.display_name}</strong>
-            <small>{user.email}</small>
-          </span>
-          <button className="home-sign-out" onClick={onSignOut}>
-            <LogOut size={17} />
-            <span>Sign out</span>
-          </button>
-        </div>
-      </header>
+      <HomeSidebar
+        user={user}
+        onHome={onHome}
+        onOpenLanguage={onOpenLanguage}
+        onSignOut={onSignOut}
+      />
       <section className="children-home">
         <div className="children-home-heading">
           <div>
             <p className="eyebrow">YOUR FAMILY SPACE</p>
-            <h1>Children & people</h1>
+            <h1>Children</h1>
             <p>Select a child to open their care timeline.</p>
           </div>
           <button className="primary" onClick={onCreate}>
@@ -1448,49 +1547,20 @@ function ChildrenHome({
             </article>
           ))}
         </div>
-        <button className="text-button children-back" onClick={onClose}>
-          Back to timeline
-        </button>
       </section>
       {createChildOpen && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) onCloseCreate();
-          }}
-        >
-          <form
-            className="log-modal create-child-modal"
-            onSubmit={onCreateChild}
-          >
-            <button type="button" className="close" onClick={onCloseCreate}>
-              <X size={20} />
-            </button>
-            <p className="eyebrow">NEW CHILD PROFILE</p>
-            <h2>Add a child</h2>
-            <p className="time-hint">
-              You can add more children and invite caregivers later.
-            </p>
-            <label>
-              Child’s name
-              <input name="name" autoFocus required />
-            </label>
-            <label>
-              Timezone
-              <input
-                name="timezone"
-                defaultValue={Intl.DateTimeFormat().resolvedOptions().timeZone}
-                required
-              />
-            </label>
-            <label>
-              Birth date <small>(optional)</small>
-              <input name="birthDate" type="date" />
-            </label>
-            {error && <p className="form-error">{error}</p>}
-            <button className="primary submit">Create child</button>
-          </form>
-        </div>
+        <CreateChildModal
+          error={error}
+          onClose={onCloseCreate}
+          onSubmit={onCreateChild}
+        />
+      )}
+      {languageOpen && (
+        <LanguagePicker
+          locale={user.locale}
+          onClose={onCloseLanguage}
+          onSelect={onLocale}
+        />
       )}
     </main>
   );
@@ -1554,7 +1624,7 @@ function ManageModal({
     </>
   );
   return (
-    <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <ModalBackdrop onClose={onClose}>
       <section className="log-modal manager">
         <button className="close" onClick={onClose}>
           <X size={20} />
@@ -1716,7 +1786,7 @@ function ManageModal({
         )}
         {panel === "children" && (
           <>
-            <h2>Children & people</h2>
+            <h2>Children</h2>
             <div className="note-list">
               {children.map((child) => (
                 <article key={child.id}>
@@ -1763,67 +1833,6 @@ function ManageModal({
           </>
         )}
       </section>
-    </div>
-  );
-}
-
-function CommentsModal({
-  item,
-  comments,
-  comment,
-  write,
-  canDelete,
-  onClose,
-  onChange,
-  onSubmit,
-  onDelete,
-}: {
-  item: Event;
-  comments: Comment[];
-  comment: string;
-  write: boolean;
-  canDelete: boolean;
-  onClose: () => void;
-  onChange: (value: string) => void;
-  onSubmit: (event: FormEvent) => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="log-modal manager">
-        <button className="close" onClick={onClose}>
-          <X size={20} />
-        </button>
-        <h2>Comments</h2>
-        <p className="time-hint">{item.activity_name}</p>
-        <div className="note-list">
-          {comments.map((entry) => (
-            <article key={entry.id}>
-              <strong>{entry.created_by_name}</strong>
-              <p>{entry.body}</p>
-            </article>
-          ))}
-        </div>
-        {write && (
-          <form onSubmit={onSubmit}>
-            <label>
-              Comment
-              <textarea
-                value={comment}
-                onChange={(event) => onChange(event.target.value)}
-                required
-              />
-            </label>
-            <button className="primary submit">Save</button>
-          </form>
-        )}
-        {canDelete && (
-          <button className="text-button danger" onClick={onDelete}>
-            <Trash2 size={14} />
-            Delete this care record
-          </button>
-        )}
-      </section>
-    </div>
+    </ModalBackdrop>
   );
 }
