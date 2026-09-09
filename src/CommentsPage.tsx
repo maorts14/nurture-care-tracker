@@ -16,11 +16,13 @@ type Props = {
   comment: string;
   userId: string;
   write: boolean;
+  canEditLog: boolean;
   canDeleteLog: boolean;
   onClose: () => void;
   onChange: (value: string) => void;
   onCreate: (event: FormEvent) => void;
   onEdit: (comment: Comment) => void;
+  onEditLog: () => void;
   onDeleteComment: (comment: Comment) => void;
   onDeleteLog: () => void;
 };
@@ -32,11 +34,13 @@ export function CommentsPage({
   comment,
   userId,
   write,
+  canEditLog,
   canDeleteLog,
   onClose,
   onChange,
   onCreate,
   onEdit,
+  onEditLog,
   onDeleteComment,
   onDeleteLog,
 }: Props) {
@@ -44,8 +48,7 @@ export function CommentsPage({
   return (
     <main className="detail-page">
       <DetailPageHeader
-        eyebrow={t("CARE RECORD")}
-        title={item.activity_name}
+        title={t(item.activity_name)}
         backLabel={t("← Timeline")}
         onBack={onClose}
       />
@@ -85,11 +88,21 @@ export function CommentsPage({
           <button className="primary">{t("Save comment")}</button>
         </form>
       )}
-      {canDeleteLog && (
-        <button className="text-button danger" onClick={onDeleteLog}>
-          <Trash2 size={14} />
-          {t("Delete this care record")}
-        </button>
+      {(canEditLog || canDeleteLog) && (
+        <div className="inline-actions log-actions">
+          {canEditLog && (
+            <button onClick={onEditLog}>
+              <Pencil size={14} />
+              {t("Edit")}
+            </button>
+          )}
+          {canDeleteLog && (
+            <button className="danger" onClick={onDeleteLog}>
+              <Trash2 size={14} />
+              {t("Delete this care record")}
+            </button>
+          )}
+        </div>
       )}
     </main>
   );

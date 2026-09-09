@@ -14,6 +14,7 @@ type ActivityStat = {
   fields: FieldStat[];
 };
 type Activity = { id: string; name: string; color: string };
+import { Menu } from "lucide-react";
 import { Locale, translate as tr } from "./i18n";
 type Props = {
   child: { id: string; name: string };
@@ -24,18 +25,32 @@ type Props = {
   };
   locale: Locale;
   onBack: () => void;
+  onOpenNavigation: () => void;
 };
 const pretty = (value: number | null, suffix = "") =>
   value === null ? "—" : `${value.toFixed(value < 10 ? 1 : 0)}${suffix}`;
 
-export function AnalyticsView({ child, dashboard, locale, onBack }: Props) {
+export function AnalyticsView({
+  child,
+  dashboard,
+  locale,
+  onBack,
+  onOpenNavigation,
+}: Props) {
   const t = (text: string) => tr(locale, text);
   const activityById = new Map(
     dashboard.activities.map((activity) => [activity.id, activity]),
   );
   return (
-    <main className="analytics-page">
+    <section className="analytics-page">
       <header>
+        <button
+          className="mobile-menu analytics-menu"
+          aria-label={t("Open navigation")}
+          onClick={onOpenNavigation}
+        >
+          <Menu size={21} />
+        </button>
         <button className="text-button" onClick={onBack}>
           {t("← Timeline")}
         </button>
@@ -64,7 +79,7 @@ export function AnalyticsView({ child, dashboard, locale, onBack }: Props) {
                 className="analytics-dot"
                 style={{ background: activity?.color }}
               />
-              <h2>{activity?.name ?? t("Activity")}</h2>
+              <h2>{activity ? t(activity.name) : t("Activity")}</h2>
               <div className="metric-grid">
                 <div>
                   <p>{t("Records")}</p>
@@ -109,6 +124,6 @@ export function AnalyticsView({ child, dashboard, locale, onBack }: Props) {
         )}{" "}
         {t("excluded from analysis.")}
       </footer>
-    </main>
+    </section>
   );
 }

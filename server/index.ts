@@ -667,6 +667,107 @@ app.delete("/api/logs/:logId", async (request, response) => {
   io.to(childRoom(deleted.rows[0].child_id)).emit("timeline:changed");
   response.status(204).end();
 });
+app.put("/api/logs/:logId", async (request, response) => {
+  const session = requireSession(request, response);
+  if (!session) return;
+  const { activityId, eventTime, eventTimezone, fieldValues, portions, note } =
+    request.body as {
+      activityId: string;
+      eventTime: string;
+      eventTimezone: string;
+      fieldValues: Record<string, unknown>;
+      portions?: {
+        kind: "breast_milk" | "formula";
+        deliveryMethod: "bottle" | "breastfeeding";
+        amountMl: number;
+      }[];
+      note?: string;
+    };
+  if (!activityId || !eventTime || !eventTimezone) {
+    response
+      .status(400)
+      .json({ error: "Activity and event time are required" });
+    return;
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const access = await client.query<{
+      child_id: string;
+      kind: "feeding" | "diaper" | "custom";
+    }>(
+      `SELECT log.child_id, activity.kind
+       FROM activity_log AS log
+       JOIN child_membership AS membership ON membership.child_id = log.child_id
+       JOIN activity_definition AS activity ON activity.id = $2 AND activity.child_id = log.child_id
+       WHERE log.id = $1 AND membership.user_id = $3 AND (membership.role = 'owner' OR log.created_by = $3) AND activity.archived_at IS NULL`,
+      [request.params.logId, activityId, session.userId],
+    );
+    if (access.rowCount !== 1) {
+      await client.query("ROLLBACK");
+      response
+        .status(403)
+        .json({ error: "Only the log creator or owner can edit this record" });
+      return;
+    }
+    const feedingPortions =
+      access.rows[0].kind === "feeding"
+        ? (portions ?? []).map((portion, position) => ({
+            kind: portion.kind,
+            delivery_method: portion.deliveryMethod,
+            amount_ml: Number(portion.amountMl),
+            position,
+          }))
+        : [];
+    if (
+      access.rows[0].kind === "feeding" &&
+      (!feedingPortions.length ||
+        feedingPortions.some(
+          (portion) =>
+            (portion.kind !== "breast_milk" && portion.kind !== "formula") ||
+            (portion.delivery_method !== "bottle" &&
+              portion.delivery_method !== "breastfeeding") ||
+            !Number.isFinite(portion.amount_ml) ||
+            portion.amount_ml <= 0,
+        ))
+    ) {
+      await client.query("ROLLBACK");
+      response.status(400).json({ error: "Add at least one milk portion" });
+      return;
+    }
+    await client.query(
+      `UPDATE activity_log
+       SET activity_id = $2, event_time = $3, event_timezone = $4, field_values = $5, note = $6
+       WHERE id = $1`,
+      [
+        request.params.logId,
+        activityId,
+        eventTime,
+        eventTimezone,
+        access.rows[0].kind === "feeding" ? {} : fieldValues,
+        note ?? null,
+      ],
+    );
+    await client.query("DELETE FROM feeding_portion WHERE log_id = $1", [
+      request.params.logId,
+    ]);
+    if (feedingPortions.length)
+      await client.query(
+        `INSERT INTO feeding_portion (log_id, kind, delivery_method, amount_ml, position)
+         SELECT $1, portion.kind, portion.delivery_method, portion.amount_ml, portion.position
+         FROM jsonb_to_recordset($2::jsonb) AS portion(kind text, delivery_method text, amount_ml numeric, position smallint)`,
+        [request.params.logId, JSON.stringify(feedingPortions)],
+      );
+    await client.query("COMMIT");
+    io.to(childRoom(access.rows[0].child_id)).emit("timeline:changed");
+    response.status(204).end();
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+});
 app.post("/api/children/:childId/gaps", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;

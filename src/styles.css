@@ -160,6 +160,11 @@ button {
   outline-color: #f3654b;
   font-weight: 500;
 }
+.timezone-select {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+}
 .create-child-modal label small {
   display: inline;
   margin-left: 4px;
@@ -458,6 +463,9 @@ nav em {
 .workspace {
   min-width: 0;
   padding: 34px clamp(26px, 5vw, 72px) 55px;
+}
+.workspace.insights-workspace {
+  padding: 0;
 }
 .topbar {
   display: flex;
@@ -758,13 +766,65 @@ nav em {
   font-size: 10px;
 }
 .check {
-  margin-left: auto;
   height: 21px;
   width: 21px;
   border: 1px solid #d5cec5;
   border-radius: 50%;
   color: #aaa198;
   font-size: 12px;
+}
+.due-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-inline-start: auto;
+}
+.due-actions .more {
+  margin: 0;
+}
+.due-actions .due-log {
+  display: inline-grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  border: 1px solid #e2d8cf;
+  border-radius: 7px;
+  color: #f3654b;
+  background: #fffaf6;
+}
+.due-actions .due-log:hover,
+.due-actions .due-log:focus-visible {
+  border-color: #f3654b;
+  background: #ffe5df;
+}
+.due-actions .check {
+  position: relative;
+  margin: 0;
+}
+.due-actions .check::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 7px);
+  z-index: 2;
+  width: max-content;
+  max-width: 150px;
+  padding: 5px 7px;
+  border-radius: 5px;
+  color: #fff;
+  background: #302c29;
+  font-size: 10px;
+  line-height: 1.2;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+.due-actions .check:hover::after,
+.due-actions .check:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
 }
 .care-gap {
   background: #fff5dd;
@@ -1313,10 +1373,10 @@ nav em {
   margin-top: 7px;
 }
 .due-item .more {
-  margin-left: 3px;
+  margin: 0;
 }
 .due-item .check {
-  margin-left: auto;
+  margin: 0;
 }
 .manager h3 {
   margin: 22px 0 0;
@@ -1538,12 +1598,41 @@ nav em {
   border-radius: 15px;
   padding: 22px;
 }
+.reminder-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 20px;
+}
 .detail-form label {
   display: grid;
   gap: 7px;
   font-size: 12px;
   font-weight: 700;
   color: #5e5650;
+}
+.reminder-one-time {
+  display: inline-flex !important;
+  align-items: center;
+  justify-self: start;
+  gap: 8px;
+  min-height: 0;
+  padding: 0;
+}
+.reminder-one-time input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #f3654b;
+}
+.reminder-schedule-field.is-disabled {
+  color: #aaa29a;
+}
+.reminder-schedule-field input:disabled {
+  color: #aaa29a;
+  background: #f3f0eb;
+  border-color: #e5ded5;
+  cursor: not-allowed;
 }
 .detail-form textarea,
 .detail-form select {

@@ -3,17 +3,20 @@ import { io } from "socket.io-client";
 import { AnalyticsView } from "./AnalyticsView";
 import { NotesPage } from "./NotesPage";
 import { CommentsPage } from "./CommentsPage";
-import { RemindersPage } from "./RemindersPage";
 import { CreateChildModal } from "./components/CreateChildModal";
 import { LanguageControl } from "./components/LanguageControl";
 import { LanguagePicker } from "./components/LanguagePicker";
 import { ModalBackdrop } from "./components/ModalBackdrop";
 import { NurtureBrand } from "./components/NurtureBrand";
+import { ReminderScheduleFields } from "./components/ReminderScheduleFields";
 import { SidebarAccount } from "./components/SidebarAccount";
+import { TimezoneSelect } from "./components/TimezoneSelect";
+import { timeZoneLabel } from "./timezones";
 import { translate } from "./i18n";
 import {
   Bell,
   Check,
+  ClipboardPlus,
   Clock3,
   Copy,
   Droplets,
@@ -141,8 +144,8 @@ type Panel =
   | "children"
   | null;
 
-const localDateTime = () => {
-  const date = new Date();
+const localDateTime = (value: string | Date = new Date()) => {
+  const date = new Date(value);
   date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
   return date.toISOString().slice(0, 16);
 };
@@ -151,17 +154,6 @@ const clock = (value: string, locale = "en") =>
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
-const timeZoneLabel = (timeZone: string, locale: User["locale"]) => {
-  if (locale === "en") return timeZone;
-  return (
-    new Intl.DateTimeFormat("he-IL", {
-      timeZone,
-      timeZoneName: "long",
-    })
-      .formatToParts(new Date())
-      .find((part) => part.type === "timeZoneName")?.value ?? timeZone
-  );
-};
 const icon = (kind: Activity["kind"]) =>
   kind === "feeding" ? (
     <Utensils size={17} />
@@ -209,12 +201,12 @@ export default function App() {
   const [email, setEmail] = useState("alex@nurture.local");
   const [password, setPassword] = useState("nurture-demo");
   const [name, setName] = useState("");
-  const [page, setPage] = useState<"timeline" | "insights">("timeline");
   const [routePath, setRoutePath] = useState(() => location.pathname || "/");
   const [panel, setPanel] = useState<Panel>(null);
   const [homeOpen, setHomeOpen] = useState(false);
   const [createChildOpen, setCreateChildOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  const [editingLog, setEditingLog] = useState<Event | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
   const [activityId, setActivityId] = useState("");
@@ -237,6 +229,7 @@ export default function App() {
   const locale: User["locale"] =
     user?.locale ?? (navigator.language.startsWith("he") ? "he" : "en");
   const t = (text: string) => translate(locale, text);
+  const insightsOpen = /^\/children\/[^/]+\/insights$/.test(routePath);
   const owner = dash?.role === "owner";
   const write = dash?.role !== "viewer";
   const events = dash?.timeline ?? [];
@@ -300,7 +293,7 @@ export default function App() {
       setRoutePath("/children");
       return;
     }
-    const match = routePath.match(/^\/children\/([^/]+)$/);
+    const match = routePath.match(/^\/children\/([^/]+)(?:\/insights)?$/);
     if (match) {
       const routeChild = children.find((item) => item.id === match[1]);
       if (routeChild) setChild(routeChild);
@@ -474,7 +467,7 @@ export default function App() {
       setError((cause as Error).message);
     }
   }
-  async function addLog(event: FormEvent) {
+  async function saveLog(event: FormEvent) {
     event.preventDefault();
     if (!child || !current) return;
     const fieldValues = Object.fromEntries(
@@ -491,8 +484,8 @@ export default function App() {
       deliveryMethod: portion.deliveryMethod,
       amountMl: Number(portion.amountMl),
     }));
-    await api(`/api/children/${child.id}/logs`, {
-      method: "POST",
+    await api(editingLog ? `/api/logs/${editingLog.id}` : `/api/children/${child.id}/logs`, {
+      method: editingLog ? "PUT" : "POST",
       body: JSON.stringify({
         activityId,
         eventTime: new Date(at).toISOString(),
@@ -506,7 +499,9 @@ export default function App() {
     setFeedingPortions([
       { kind: "breast_milk", deliveryMethod: "bottle", amountMl: "" },
     ]);
+    setEditingLog(null);
     setLogOpen(false);
+    await loadDash(child.id);
   }
   async function createActivity(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -735,6 +730,23 @@ export default function App() {
     setSelected(null);
     await loadDash(child.id);
   }
+  function editLog() {
+    if (!selected || !child) return;
+    setActivityId(selected.activity_id);
+    setAt(localDateTime(selected.event_time));
+    setValues(selected.field_values);
+    setFeedingPortions(
+      selected.feeding_portions.map((portion) => ({
+        kind: portion.kind,
+        deliveryMethod: portion.delivery_method,
+        amountMl: String(portion.amount_ml),
+      })),
+    );
+    setNote(selected.note ?? "");
+    setSelected(null);
+    setEditingLog(selected);
+    setLogOpen(true);
+  }
   const setLocale = async (locale: User["locale"]) => {
     if (!user) return;
     await api("/api/me/locale", {
@@ -871,29 +883,6 @@ export default function App() {
     );
   if (!dash)
     return <div className="loading-screen">{t("Loading family space…")}</div>;
-  if ((() => page === "insights")())
-    return (
-      <AnalyticsView
-        child={child}
-        dashboard={dash}
-        locale={user.locale}
-        onBack={() => setPage("timeline")}
-      />
-    );
-  if (panel === "reminder")
-    return (
-      <RemindersPage
-        locale={user.locale}
-        reminders={dash.reminders}
-        activities={dash.activities}
-        owner={owner}
-        onClose={() => setPanel(null)}
-        onCreate={remind}
-        onEdit={updateReminder}
-        onComplete={completeReminder}
-        onDelete={deleteReminder}
-      />
-    );
   if (panel === "notes")
     return (
       <NotesPage
@@ -916,12 +905,14 @@ export default function App() {
         comment={comment}
         userId={user.id}
         write={write}
+        canEditLog={owner || selected!.created_by_id === user.id}
         canDeleteLog={owner || selected!.created_by_id === user.id}
         onClose={() => setSelected(null)}
         onChange={setComment}
         onCreate={addComment}
         onEdit={editComment}
         onDeleteComment={deleteComment}
+        onEditLog={editLog}
         onDeleteLog={deleteLog}
       />
     );
@@ -944,12 +935,7 @@ export default function App() {
           </span>
           <select
             value={child.id}
-            onChange={(event) =>
-              setChild(
-                children.find((item) => item.id === event.target.value) ??
-                  child,
-              )
-            }
+            onChange={(event) => navigate(`/children/${event.target.value}`)}
           >
             {children.map((item) => (
               <option key={item.id} value={item.id}>
@@ -959,11 +945,17 @@ export default function App() {
           </select>
         </label>
         <nav onClickCapture={() => setMobileSidebarOpen(false)}>
-          <button className="nav-active">
+          <button
+            className={insightsOpen ? "" : "nav-active"}
+            onClick={() => navigate(`/children/${child.id}`)}
+          >
             <Clock3 size={18} />
             {t("Timeline")}
           </button>
-          <button onClick={() => setPage("insights")}>
+          <button
+            className={insightsOpen ? "nav-active" : ""}
+            onClick={() => navigate(`/children/${child.id}/insights`)}
+          >
             <Sparkles size={18} />
             {t("Insights")}
           </button>
@@ -1012,7 +1004,17 @@ export default function App() {
           />
         </div>
       </aside>
-      <section className="workspace">
+      <section className={`workspace ${insightsOpen ? "insights-workspace" : ""}`}>
+        {insightsOpen ? (
+          <AnalyticsView
+            child={child}
+            dashboard={dash}
+            locale={user.locale}
+            onBack={() => navigate(`/children/${child.id}`)}
+            onOpenNavigation={() => setMobileSidebarOpen(true)}
+          />
+        ) : (
+          <>
         <header className="topbar">
           <div className="topbar-title">
             <button
@@ -1051,6 +1053,7 @@ export default function App() {
                       amountMl: "",
                     },
                   ]);
+                  setEditingLog(null);
                   setLogOpen(true);
                 }}
               >
@@ -1072,7 +1075,6 @@ export default function App() {
             <strong>
               {expected ? clock(expected.toISOString(), user.locale) : "—"}
             </strong>
-            <span className="soft-warning">{t("from its reminder")}</span>
           </div>
           <div>
             <p>{t("Care today")}</p>
@@ -1085,6 +1087,15 @@ export default function App() {
           reminders={dash.reminders}
           locale={user.locale}
           owner={owner}
+          onLogActivity={write ? (id) => {
+            setActivityId(id);
+            setAt(localDateTime());
+            setFeedingPortions([
+              { kind: "breast_milk", deliveryMethod: "bottle", amountMl: "" },
+            ]);
+            setEditingLog(null);
+            setLogOpen(true);
+          } : undefined}
           onOpen={() => setPanel("reminder")}
           onComplete={completeReminder}
           onDelete={deleteReminder}
@@ -1111,7 +1122,7 @@ export default function App() {
                 </span>
                 <div className="event-content">
                   <div className="event-title">
-                    <h3>{event.activity_name}</h3>
+                    <h3>{t(event.activity_name)}</h3>
                     <span>
                       {t("by")} {event.created_by}
                     </span>
@@ -1126,6 +1137,8 @@ export default function App() {
             ))}
           </div>
         </section>
+          </>
+        )}
       </section>
       {languageOpen && (
         <LanguagePicker
@@ -1143,13 +1156,17 @@ export default function App() {
           values={values}
           portions={feedingPortions}
           note={note}
-          onClose={() => setLogOpen(false)}
+          onClose={() => {
+            setEditingLog(null);
+            setLogOpen(false);
+          }}
           onActivity={setActivityId}
           onAt={setAt}
           onValues={setValues}
           onPortions={setFeedingPortions}
           onNote={setNote}
-          onSubmit={addLog}
+          editing={Boolean(editingLog)}
+          onSubmit={saveLog}
         />
       )}
       {panel && (
@@ -1226,7 +1243,6 @@ function LeaveCareSpaceModal({
         >
           <X size={20} />
         </button>
-        <p className="eyebrow">{t("CARE SPACE MEMBERSHIP")}</p>
         <h2>{t("Are you sure you want to leave?")}</h2>
         <p className="leave-message">{message}</p>
         <div className="invitation-actions">
@@ -1311,6 +1327,7 @@ function UpcomingList({
   onOpen,
   onComplete,
   onDelete,
+  onLogActivity,
 }: {
   reminders: Reminder[];
   locale: User["locale"];
@@ -1318,6 +1335,7 @@ function UpcomingList({
   onOpen: () => void;
   onComplete: (reminder: Reminder) => void;
   onDelete: (reminder: Reminder) => void;
+  onLogActivity?: (activityId: string) => void;
 }) {
   const t = (text: string) => translate(locale, text);
   return (
@@ -1349,22 +1367,37 @@ function UpcomingList({
                     : `${t("Every")} ${Math.round((reminder.interval_minutes ?? 0) / 60)} ${t("hours after activity")}`}
                 </p>
               </div>
-              <button
-                className="check"
-                title={`${t("Complete")} ${reminder.title}`}
-                onClick={() => onComplete(reminder)}
-              >
-                <Check size={13} />
-              </button>
-              {owner && (
+              <span className="due-actions">
+                {onLogActivity && reminder.activity_id && (
+                  <button
+                    className="due-log"
+                    aria-label={`${t("Log activity")} ${reminder.title}`}
+                    title={`${t("Log activity")} ${reminder.title}`}
+                    onClick={() => onLogActivity(reminder.activity_id!)}
+                  >
+                    <ClipboardPlus size={14} />
+                  </button>
+                )}
                 <button
-                  className="more"
-                  title={`${t("Delete")} ${reminder.title}`}
-                  onClick={() => onDelete(reminder)}
+                  className="check"
+                  aria-label={`${t("Mark complete")} ${reminder.title}`}
+                  title={`${t("Mark complete")} ${reminder.title}`}
+                  data-tooltip={t("Mark complete")}
+                  onClick={() => onComplete(reminder)}
                 >
-                  <Trash2 size={14} />
+                  <Check size={13} />
                 </button>
-              )}
+                {owner && (
+                  <button
+                    className="more"
+                    aria-label={`${t("Delete")} ${reminder.title}`}
+                    title={`${t("Delete")} ${reminder.title}`}
+                    onClick={() => onDelete(reminder)}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </span>
             </article>
           ))}
         </div>
@@ -1385,6 +1418,7 @@ function LogModal({
   values,
   portions,
   note,
+  editing,
   onClose,
   onActivity,
   onAt,
@@ -1400,6 +1434,7 @@ function LogModal({
   values: Record<string, unknown>;
   portions: FeedingPortionDraft[];
   note: string;
+  editing: boolean;
   onClose: () => void;
   onActivity: (id: string) => void;
   onAt: (value: string) => void;
@@ -1416,7 +1451,7 @@ function LogModal({
           <X size={20} />
         </button>
         <p className="eyebrow">{t("QUICK LOG")}</p>
-        <h2>{t("What happened?")}</h2>
+        <h2>{t(editing ? "Edit care record" : "What happened?")}</h2>
         <div className="activity-picker">
           {activities.map((item) => (
             <button
@@ -1591,7 +1626,9 @@ function LogModal({
             placeholder={t("Optional context for everyone")}
           />
         </label>
-        <button className="primary submit log-submit">{t("Save")}</button>
+        <button className="primary submit log-submit">
+          {t(editing ? "Save changes" : "Save")}
+        </button>
       </form>
     </ModalBackdrop>
   );
@@ -1957,7 +1994,7 @@ function ManageModal({
                 <select name="activityId">
                   {activities.map((activity) => (
                     <option key={activity.id} value={activity.id}>
-                      {activity.name}
+                      {t(activity.name)}
                     </option>
                   ))}
                 </select>
@@ -1973,7 +2010,7 @@ function ManageModal({
               <div className="note-list">
                 {activities.map((activity) => (
                   <article key={activity.id}>
-                    <strong>{activity.name}</strong>
+                    <strong>{t(activity.name)}</strong>
                     <button
                       className="text-button danger"
                       onClick={() => onArchive(activity.id)}
@@ -1988,7 +2025,7 @@ function ManageModal({
         )}
         {panel === "reminder" && (
           <form onSubmit={onReminder}>
-            <h2>{t("Passive reminder")}</h2>
+            <h2>{t("Add reminder")}</h2>
             <label>
               {t("Title")}
               <input name="title" required />
@@ -1999,28 +2036,12 @@ function ManageModal({
                 <option value="">{t("None")}</option>
                 {activities.map((activity) => (
                   <option key={activity.id} value={activity.id}>
-                    {activity.name}
+                    {t(activity.name)}
                   </option>
                 ))}
               </select>
             </label>
-            <label>
-              {t("Schedule")}
-              <select name="kind">
-                <option value="interval">
-                  {t("Repeat after last activity")}
-                </option>
-                <option value="one_time">{t("One time")}</option>
-              </select>
-            </label>
-            <label>
-              {t("Interval hours")}
-              <input name="hours" type="number" min="1" defaultValue="3" />
-            </label>
-            <label>
-              {t("One-time date/time")}
-              <input name="when" type="datetime-local" />
-            </label>
+            <ReminderScheduleFields locale={locale} />
             <button className="primary submit">{t("Save reminder")}</button>
           </form>
         )}
@@ -2169,13 +2190,7 @@ function ManageModal({
               </label>
               <label>
                 {t("Timezone")}
-                <input
-                  name="timezone"
-                  defaultValue={
-                    Intl.DateTimeFormat().resolvedOptions().timeZone
-                  }
-                  required
-                />
+                <TimezoneSelect locale={locale} />
               </label>
               <label>
                 {t("Birth date")}

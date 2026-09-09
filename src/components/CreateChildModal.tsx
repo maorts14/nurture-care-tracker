@@ -2,6 +2,7 @@ import { FormEvent } from "react";
 import { X } from "lucide-react";
 import { Locale, translate } from "../i18n";
 import { ModalBackdrop } from "./ModalBackdrop";
+import { TimezoneSelect } from "./TimezoneSelect";
 
 type CreateChildModalProps = {
   error: string;
@@ -34,11 +35,7 @@ export function CreateChildModal({
         </label>
         <label>
           {t("Timezone")}
-          <input
-            name="timezone"
-            defaultValue={Intl.DateTimeFormat().resolvedOptions().timeZone}
-            required
-          />
+          <TimezoneSelect locale={locale} />
         </label>
         <label>
           {t("Birth date")} <small>{t("(optional)")}</small>

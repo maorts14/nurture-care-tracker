@@ -35,7 +35,6 @@ export function NotesPage({
   return (
     <main className="detail-page">
       <DetailPageHeader
-        eyebrow={t("SHARED CHILD SPACE")}
         title={t("Notes")}
         backLabel={t("← Timeline")}
         onBack={onClose}

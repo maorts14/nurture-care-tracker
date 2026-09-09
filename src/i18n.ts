@@ -31,7 +31,6 @@ const hebrew: Record<string, string> = {
   "Export CSV": "ייצוא CSV",
   "Last feeding": "האכלה אחרונה",
   "Next expected": "הצפוי הבא",
-  "from its reminder": "לפי התזכורת",
   "Care today": "טיפול היום",
   events: "אירועים",
   "Care history": "היסטוריית טיפול",
@@ -45,6 +44,8 @@ const hebrew: Record<string, string> = {
   "No upcoming reminders. Add one whenever you need it.":
     "אין תזכורות קרובות. אפשר להוסיף תזכורת בכל עת.",
   Complete: "סימון כהושלם",
+  "Log activity": "תיעוד פעילות",
+  "Mark complete": "סימון כהושלם",
   Delete: "מחיקה",
   "Declare care gap": "הכרזת הפסקת טיפול",
   "Invite caregiver": "הזמנת מטפל",
@@ -127,7 +128,6 @@ const hebrew: Record<string, string> = {
   Comment: "תגובה",
   "Save comment": "שמירת תגובה",
   "Delete this care record": "מחיקת רשומת טיפול",
-  "PASSIVE IN-APP REMINDERS": "תזכורות פסיביות באפליקציה",
   "Recurring reminders reset from the most recent matching activity.":
     "תזכורות חוזרות מתאפסות לפי הפעילות התואמת האחרונה.",
   Title: "כותרת",
@@ -135,9 +135,11 @@ const hebrew: Record<string, string> = {
   Schedule: "תזמון",
   "Repeat after last activity": "חזרה לאחר הפעילות האחרונה",
   "One time": "פעם אחת",
+  "One-time reminder": "תזכורת חד־פעמית",
   "Interval hours": "מרווח בשעות",
   "One-time date/time": "תאריך ושעה חד־פעמיים",
   "Save reminder": "שמירת תזכורת",
+  "Add reminder": "הוספת תזכורת",
   Every: "כל",
   "hours after activity": "שעות לאחר פעילות",
   "Field type": "סוג שדה",
@@ -187,7 +189,6 @@ const hebrew: Record<string, string> = {
   "Join care space": "הצטרפות למרחב",
   "Leave care space": "עזיבת מרחב הטיפול",
   "Close leave confirmation": "סגירת אישור העזיבה",
-  "CARE SPACE MEMBERSHIP": "חברות במרחב הטיפול",
   "Are you sure you want to leave?": "בטוחים שברצונכם לעזוב?",
   "joined this care space first and will become the new owner.":
     "הצטרף/ה ראשון/ה למרחב הטיפול ויהפוך/תהפוך לבעלים החדש/ה.",
@@ -214,6 +215,8 @@ const hebrew: Record<string, string> = {
   "Edit note": "עריכת הערה",
   "Delete this note?": "למחוק את ההערה הזו?",
   "Edit comment": "עריכת תגובה",
+  "Edit care record": "עריכת רשומת טיפול",
+  "Save changes": "שמירת שינויים",
   "Delete this comment?": "למחוק את התגובה הזו?",
   "Permanently delete this care record?": "למחוק לצמיתות את רשומת הטיפול הזו?",
   "Remove this activity from future logging? Existing history stays in exports.":

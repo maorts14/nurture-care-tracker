@@ -1,7 +1,6 @@
 import { ReactNode } from "react";
 
 type DetailPageHeaderProps = {
-  eyebrow: string;
   title: ReactNode;
   backLabel: string;
   onBack: () => void;
@@ -9,7 +8,6 @@ type DetailPageHeaderProps = {
 };
 
 export function DetailPageHeader({
-  eyebrow,
   title,
   backLabel,
   onBack,
@@ -20,7 +18,6 @@ export function DetailPageHeader({
       <button className="text-button" onClick={onBack}>
         {backLabel}
       </button>
-      <p className="eyebrow">{eyebrow}</p>
       <h1>{title}</h1>
       {children}
     </header>
