@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, Fragment, useEffect, useMemo, useState } from "react";
 import { io } from "socket.io-client";
 import { AnalyticsView } from "./AnalyticsView";
 import { CaregiversPage } from "./CaregiversPage";
@@ -15,7 +15,6 @@ import { TimezoneSelect } from "./components/TimezoneSelect";
 import { timeZoneLabel } from "./timezones";
 import { translate } from "./i18n";
 import {
-  Bell,
   Check,
   ClipboardPlus,
   Clock3,
@@ -160,6 +159,19 @@ const clock = (value: string, locale = "en") =>
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
+function usePageScrollLock(locked: boolean) {
+  useEffect(() => {
+    if (!locked) return;
+    const previousDocumentOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.documentElement.style.overflow = previousDocumentOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+    };
+  }, [locked]);
+}
 const icon = (kind: Activity["kind"]) =>
   kind === "feeding" ? (
     <Utensils size={17} />
@@ -182,18 +194,36 @@ async function api<T>(path: string, options?: RequestInit): Promise<T> {
     ? (undefined as T)
     : (response.json() as Promise<T>);
 }
-function eventDetail(event: Event, t: (text: string) => string) {
+function humanizeFieldKey(fieldKey: string) {
+  return fieldKey === "clothesChanged"
+    ? "Clothes changed"
+    : fieldKey.replace(/([a-z])([A-Z])/g, "$1 $2").replaceAll("_", " ");
+}
+function eventDetail(
+  event: Event,
+  activities: Activity[],
+  t: (text: string) => string,
+) {
   if (event.kind === "feeding" && event.feeding_portions.length)
     return event.feeding_portions
       .map(
         (portion) =>
-          `${t(portion.kind === "breast_milk" ? "Breast milk" : "Formula")} · ${t(portion.delivery_method === "bottle" ? "Bottle" : "Breastfeeding")}: ${portion.amount_ml} ml`,
+          `${t(portion.kind === "breast_milk" ? "Breast milk" : "Formula")} · ${t(portion.delivery_method === "bottle" ? "Bottle" : "Breastfeeding")}: ${portion.amount_ml} ${t("ml")}`,
       )
       .join(" · ");
+  const activity = activities.find((item) => item.id === event.activity_id);
   const values = Object.entries(event.field_values)
     .filter(([, value]) => value !== "" && value !== false && value != null)
-    .map(([key, value]) => `${key.replaceAll("_", " ")}: ${String(value)}`);
-  return values.join(" · ") || "Care activity";
+    .map(([key, value]) => {
+      const field = activity?.fields.find((item) => item.field_key === key);
+      const label = t(field?.label ?? humanizeFieldKey(key));
+      const displayValue =
+        typeof value === "boolean"
+          ? t(value ? "Yes" : "No")
+          : t(String(value));
+      return `${label}: ${displayValue}`;
+    });
+  return values.join(" · ") || t("Care activity");
 }
 
 export default function App() {
@@ -225,6 +255,7 @@ export default function App() {
   const [at, setAt] = useState(localDateTime());
   const [notes, setNotes] = useState<Note[]>([]);
   const [selected, setSelected] = useState<Event | null>(null);
+  const [detailEvent, setDetailEvent] = useState<Event | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [comment, setComment] = useState("");
   const [inviteUrl, setInviteUrl] = useState("");
@@ -233,6 +264,7 @@ export default function App() {
     null,
   );
   const [leavePreview, setLeavePreview] = useState<LeavePreview | null>(null);
+  usePageScrollLock(mobileSidebarOpen);
   const locale: User["locale"] =
     user?.locale ?? (navigator.language.startsWith("he") ? "he" : "en");
   const t = (text: string) => translate(locale, text);
@@ -241,6 +273,37 @@ export default function App() {
   const owner = dash?.role === "owner";
   const write = dash?.role !== "viewer";
   const events = dash?.timeline ?? [];
+  const childTimeZone = child?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const dayKeyFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: childTimeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }),
+    [childTimeZone],
+  );
+  const timelineDayFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(user?.locale === "he" ? "he-IL" : "en-US", {
+        timeZone: childTimeZone,
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      }),
+    [childTimeZone, user?.locale],
+  );
+  const localDayKey = (value: string | Date) =>
+    dayKeyFormatter
+      .formatToParts(new Date(value))
+      .filter((part) => part.type !== "literal")
+      .map((part) => part.value)
+      .join("-");
+  const todayDayKey = localDayKey(new Date());
+  const todayEvents = events.filter(
+    (event) => localDayKey(event.event_time) === todayDayKey,
+  );
   const feed = events.filter((event) => event.kind === "feeding");
   const current = dash?.activities.find((item) => item.id === activityId);
   const lastFeed = feed[0];
@@ -992,11 +1055,6 @@ export default function App() {
             <Sparkles size={18} />
             {t("Insights")}
           </button>
-          <button onClick={() => setPanel("reminder")}>
-            <Bell size={18} />
-            {t("Upcoming")}
-            <em>{dash.reminders.length}</em>
-          </button>
         </nav>
         <div
           className="sidebar-bottom"
@@ -1129,7 +1187,7 @@ export default function App() {
           <div>
             <p>{t("Care today")}</p>
             <strong>
-              {events.length} {t("events")}
+              {todayEvents.length} {t("events")}
             </strong>
           </div>
         </section>
@@ -1164,27 +1222,56 @@ export default function App() {
             </button>
           </div>
           <div className="timeline-list">
-            {events.map((event) => (
-              <article className="event" key={event.id}>
-                <time>{clock(event.event_time, user.locale)}</time>
-                <span className="event-line">
-                  <i style={{ background: event.color }}>{icon(event.kind)}</i>
-                </span>
-                <div className="event-content">
-                  <div className="event-title">
-                    <h3>{t(event.activity_name)}</h3>
-                    <span>
-                      {t("by")} {event.created_by}
+            {events.map((event, index) => {
+              const dayKey = localDayKey(event.event_time);
+              const startsNewDay =
+                index === 0 || localDayKey(events[index - 1].event_time) !== dayKey;
+              return (
+                <Fragment key={event.id}>
+                  {startsNewDay && (
+                    <div className="timeline-date-divider">
+                      <span>{timelineDayFormatter.format(new Date(event.event_time))}</span>
+                    </div>
+                  )}
+                  <article
+                    className="event event-open-detail"
+                    tabIndex={0}
+                    role="button"
+                    onClick={() => setDetailEvent(event)}
+                    onKeyDown={(keyboardEvent) => {
+                      if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
+                        keyboardEvent.preventDefault();
+                        setDetailEvent(event);
+                      }
+                    }}
+                  >
+                    <time>{clock(event.event_time, user.locale)}</time>
+                    <span className="event-line">
+                      <i style={{ background: event.color }}>{icon(event.kind)}</i>
                     </span>
-                  </div>
-                  <p>{eventDetail(event, t)}</p>
-                  {event.note && <small>“{event.note}”</small>}
-                </div>
-                <button className="more" onClick={() => openComments(event)}>
-                  <MessageCircle size={17} />
-                </button>
-              </article>
-            ))}
+                    <div className="event-content">
+                      <div className="event-title">
+                        <h3>{t(event.activity_name)}</h3>
+                        <span>
+                          {t("by")} {event.created_by}
+                        </span>
+                      </div>
+                      <p>{eventDetail(event, dash.activities, t)}</p>
+                      {event.note && <small>“{event.note}”</small>}
+                    </div>
+                    <button
+                      className="more"
+                      onClick={(clickEvent) => {
+                        clickEvent.stopPropagation();
+                        openComments(event);
+                      }}
+                    >
+                      <MessageCircle size={17} />
+                    </button>
+                  </article>
+                </Fragment>
+              );
+            })}
           </div>
         </section>
           </>
@@ -1195,6 +1282,15 @@ export default function App() {
           locale={user.locale}
           onClose={() => setLanguageOpen(false)}
           onSelect={setLocale}
+        />
+      )}
+      {detailEvent && (
+        <EventDetailModal
+          event={detailEvent}
+          activities={dash.activities}
+          locale={user.locale}
+          timeZone={child.timezone}
+          onClose={() => setDetailEvent(null)}
         />
       )}
       {logOpen && (
@@ -1460,6 +1556,59 @@ function UpcomingList({
   );
 }
 
+function EventDetailModal({
+  event,
+  activities,
+  locale,
+  timeZone,
+  onClose,
+}: {
+  event: Event;
+  activities: Activity[];
+  locale: User["locale"];
+  timeZone: string;
+  onClose: () => void;
+}) {
+  const t = (text: string) => translate(locale, text);
+  const eventDate = new Intl.DateTimeFormat(locale === "he" ? "he-IL" : "en-US", {
+    timeZone,
+    dateStyle: "full",
+    timeStyle: "short",
+  }).format(new Date(event.event_time));
+  return (
+    <ModalBackdrop onClose={onClose}>
+      <section className="event-detail-modal" role="dialog" aria-modal="true">
+        <button type="button" className="close" onClick={onClose} aria-label={t("Close")}>
+          <X size={20} />
+        </button>
+        <div className="event-detail-heading">
+          <i style={{ background: event.color }}>{icon(event.kind)}</i>
+          <div>
+            <h2>{t(event.activity_name)}</h2>
+            <p>{eventDate}</p>
+          </div>
+        </div>
+        <dl className="event-detail-list">
+          <div>
+            <dt>{t("Logged by")}</dt>
+            <dd>{event.created_by}</dd>
+          </div>
+          <div>
+            <dt>{t("Details")}</dt>
+            <dd>{eventDetail(event, activities, t)}</dd>
+          </div>
+          {event.note && (
+            <div>
+              <dt>{t("Note")}</dt>
+              <dd>“{event.note}”</dd>
+            </div>
+          )}
+        </dl>
+      </section>
+    </ModalBackdrop>
+  );
+}
+
 function LogModal({
   locale,
   activity,
@@ -1696,6 +1845,7 @@ function HomeSidebar({
   onSignOut: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  usePageScrollLock(open);
   const close = () => setOpen(false);
   const t = (text: string) => translate(user.locale, text);
   return (

@@ -79,6 +79,14 @@ const hebrew: Record<string, string> = {
   Wet: "רטוב",
   Dirty: "מלוכלך",
   Mixed: "מעורב",
+  "Clothes changed": "הוחלפו בגדים",
+  Yes: "כן",
+  No: "לא",
+  ml: "מ״ל",
+  "Care activity": "פעילות טיפול",
+  "Logged by": "תועד על ידי",
+  Details: "פרטים",
+  Close: "סגירה",
   "YOUR FAMILY SPACE": "המרחב המשפחתי שלכם",
   "Everything starts when": "הכול מתחיל",
   "you’re ready.": "כשתהיו מוכנים.",
@@ -239,7 +247,6 @@ const hebrew: Record<string, string> = {
   "Remove this activity from future logging? Existing history stays in exports.":
     "להסיר פעילות זו מתיעוד עתידי? ההיסטוריה הקיימת תישאר בייצוא.",
   "Request failed": "הבקשה נכשלה",
-  "Care activity": "פעילות טיפול",
 };
 
 export const translate = (locale: Locale, text: string) =>
