@@ -6,3 +6,4 @@ dist/
 !.env.production.example
 npm-debug.log*
 .DS_Store
+.codex-remote-attachments/

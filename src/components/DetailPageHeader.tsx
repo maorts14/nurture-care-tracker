@@ -1,23 +1,23 @@
 import { ReactNode } from "react";
+import { Locale } from "../i18n";
+import { TimelineBackButton } from "./TimelineBackButton";
 
 type DetailPageHeaderProps = {
   title: ReactNode;
-  backLabel: string;
+  locale: Locale;
   onBack: () => void;
   children?: ReactNode;
 };
 
 export function DetailPageHeader({
   title,
-  backLabel,
+  locale,
   onBack,
   children,
 }: DetailPageHeaderProps) {
   return (
     <header>
-      <button className="text-button" onClick={onBack}>
-        {backLabel}
-      </button>
+      <TimelineBackButton locale={locale} onClick={onBack} />
       <h1>{title}</h1>
       {children}
     </header>

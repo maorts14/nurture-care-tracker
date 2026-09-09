@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { io } from "socket.io-client";
 import { AnalyticsView } from "./AnalyticsView";
+import { CaregiversPage } from "./CaregiversPage";
 import { NotesPage } from "./NotesPage";
 import { CommentsPage } from "./CommentsPage";
 import { CreateChildModal } from "./components/CreateChildModal";
@@ -83,17 +84,16 @@ type Reminder = {
 };
 type ActivityAnalytics = {
   activity_id: string;
+  average: ActivityMetrics;
+  calendar_day: ActivityMetrics;
+  last_24_hours: ActivityMetrics;
+  history: Array<ActivityMetrics & { date: string }>;
+};
+type ActivityMetrics = {
   count: number;
-  average_hours: number | null;
-  median_hours: number | null;
-  interval_warning: boolean;
-  fields: {
-    key: string;
-    label: string;
-    unit?: string;
-    count: number;
-    average: number | null;
-  }[];
+  portion_count: number;
+  total_amount_ml: number;
+  average_amount_ml: number | null;
 };
 type Dashboard = {
   role: "owner" | "caregiver" | "viewer";
@@ -104,6 +104,12 @@ type Dashboard = {
   analytics: ActivityAnalytics[];
 };
 type Child = { id: string; name: string; timezone: string; role: string };
+type ChildMember = {
+  id: string;
+  display_name: string;
+  email: string;
+  role: "owner" | "caregiver" | "viewer";
+};
 type User = {
   id: string;
   email: string;
@@ -193,6 +199,7 @@ function eventDetail(event: Event, t: (text: string) => string) {
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [children, setChildren] = useState<Child[]>([]);
+  const [members, setMembers] = useState<ChildMember[]>([]);
   const [child, setChild] = useState<Child | null>(null);
   const [dash, setDash] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -230,6 +237,7 @@ export default function App() {
     user?.locale ?? (navigator.language.startsWith("he") ? "he" : "en");
   const t = (text: string) => translate(locale, text);
   const insightsOpen = /^\/children\/[^/]+\/insights$/.test(routePath);
+  const caregiversOpen = /^\/children\/[^/]+\/caregivers$/.test(routePath);
   const owner = dash?.role === "owner";
   const write = dash?.role !== "viewer";
   const events = dash?.timeline ?? [];
@@ -273,6 +281,9 @@ export default function App() {
         : (data.activities[0]?.id ?? ""),
     );
   };
+  const loadMembers = async (id: string) => {
+    setMembers(await api<ChildMember[]>(`/api/children/${id}/members`));
+  };
   const loadNotes = async () => {
     if (child) setNotes(await api<Note[]>(`/api/children/${child.id}/notes`));
   };
@@ -293,7 +304,7 @@ export default function App() {
       setRoutePath("/children");
       return;
     }
-    const match = routePath.match(/^\/children\/([^/]+)(?:\/insights)?$/);
+    const match = routePath.match(/^\/children\/([^/]+)(?:\/(?:insights|caregivers))?$/);
     if (match) {
       const routeChild = children.find((item) => item.id === match[1]);
       if (routeChild) setChild(routeChild);
@@ -308,6 +319,10 @@ export default function App() {
       loadDash(child.id).catch((cause: Error) => setError(cause.message));
     else setDash(null);
   }, [child?.id]);
+  useEffect(() => {
+    const match = routePath.match(/^\/children\/([^/]+)\/caregivers$/);
+    if (match) loadMembers(match[1]).catch((cause: Error) => setError(cause.message));
+  }, [routePath]);
   useEffect(() => {
     document.documentElement.lang = locale;
     document.documentElement.dir = locale === "he" ? "rtl" : "ltr";
@@ -730,6 +745,24 @@ export default function App() {
     setSelected(null);
     await loadDash(child.id);
   }
+  async function changeMemberRole(
+    member: ChildMember,
+    role: "caregiver" | "viewer",
+  ) {
+    if (!child) return;
+    await api(`/api/children/${child.id}/members/${member.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ role }),
+    });
+    await loadMembers(child.id);
+  }
+  async function removeMember(member: ChildMember) {
+    if (!child || !confirm(t("Remove this person's access?"))) return;
+    await api(`/api/children/${child.id}/members/${member.id}`, {
+      method: "DELETE",
+    });
+    await loadMembers(child.id);
+  }
   function editLog() {
     if (!selected || !child) return;
     setActivityId(selected.activity_id);
@@ -983,6 +1016,13 @@ export default function App() {
               {t("Invite caregiver")}
             </button>
           )}
+          <button
+            className={caregiversOpen ? "nav-active" : ""}
+            onClick={() => navigate(`/children/${child.id}/caregivers`)}
+          >
+            <Users size={18} />
+            {t("Caregivers")}
+          </button>
           <button onClick={() => navigate("/children")}>
             <Users size={18} />
             {t("Children")}
@@ -1004,7 +1044,7 @@ export default function App() {
           />
         </div>
       </aside>
-      <section className={`workspace ${insightsOpen ? "insights-workspace" : ""}`}>
+      <section className={`workspace ${insightsOpen || caregiversOpen ? "insights-workspace" : ""}`}>
         {insightsOpen ? (
           <AnalyticsView
             child={child}
@@ -1012,6 +1052,16 @@ export default function App() {
             locale={user.locale}
             onBack={() => navigate(`/children/${child.id}`)}
             onOpenNavigation={() => setMobileSidebarOpen(true)}
+          />
+        ) : caregiversOpen ? (
+          <CaregiversPage
+            locale={user.locale}
+            members={members}
+            owner={owner}
+            onBack={() => navigate(`/children/${child.id}`)}
+            onOpenNavigation={() => setMobileSidebarOpen(true)}
+            onChangeRole={changeMemberRole}
+            onRemove={removeMember}
           />
         ) : (
           <>

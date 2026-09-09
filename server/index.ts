@@ -232,6 +232,76 @@ app.get("/api/children", async (request, response) => {
   );
   response.json(result.rows);
 });
+app.get("/api/children/:childId/members", async (request, response) => {
+  const session = requireSession(request, response);
+  if (!session) return;
+  const result = await pool.query<{
+    id: string;
+    display_name: string;
+    email: string;
+    role: "owner" | "caregiver" | "viewer";
+    joined_at: string;
+  }>(
+    `SELECT member.user_id AS id, user_account.display_name, user_account.email, member.role, member.joined_at
+     FROM child_membership AS member
+     JOIN app_user AS user_account ON user_account.id = member.user_id
+     JOIN child_membership AS requester ON requester.child_id = member.child_id
+     WHERE member.child_id = $1 AND requester.user_id = $2
+     ORDER BY CASE member.role WHEN 'owner' THEN 0 ELSE 1 END, member.joined_at ASC`,
+    [request.params.childId, session.userId],
+  );
+  response.json(result.rows);
+});
+app.put("/api/children/:childId/members/:memberId", async (request, response) => {
+  const session = requireSession(request, response);
+  if (!session) return;
+  const { role } = request.body as { role: "caregiver" | "viewer" };
+  if (role !== "caregiver" && role !== "viewer") {
+    response.status(400).json({ error: "Choose caregiver or viewer access" });
+    return;
+  }
+  const updated = await pool.query<{ user_id: string }>(
+    `UPDATE child_membership AS member
+     SET role = $1
+     FROM child_membership AS owner
+     WHERE member.child_id = $2
+       AND member.user_id = $3
+       AND member.role <> 'owner'
+       AND owner.child_id = member.child_id
+       AND owner.user_id = $4
+       AND owner.role = 'owner'
+     RETURNING member.user_id`,
+    [role, request.params.childId, request.params.memberId, session.userId],
+  );
+  if (updated.rowCount !== 1) {
+    response.status(403).json({ error: "Only the owner can change member access" });
+    return;
+  }
+  io.to(childRoom(request.params.childId)).emit("timeline:changed");
+  response.status(204).end();
+});
+app.delete("/api/children/:childId/members/:memberId", async (request, response) => {
+  const session = requireSession(request, response);
+  if (!session) return;
+  const removed = await pool.query<{ user_id: string }>(
+    `DELETE FROM child_membership AS member
+     USING child_membership AS owner
+     WHERE member.child_id = $1
+       AND member.user_id = $2
+       AND member.role <> 'owner'
+       AND owner.child_id = member.child_id
+       AND owner.user_id = $3
+       AND owner.role = 'owner'
+     RETURNING member.user_id`,
+    [request.params.childId, request.params.memberId, session.userId],
+  );
+  if (removed.rowCount !== 1) {
+    response.status(403).json({ error: "Only the owner can remove members" });
+    return;
+  }
+  io.to(childRoom(request.params.childId)).emit("timeline:changed");
+  response.status(204).end();
+});
 app.post("/api/children", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
@@ -431,7 +501,7 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
     response.status(403).json({ error: "Child access is required" });
     return;
   }
-  const [timeline, activities, fields, reminders, gaps] = await Promise.all([
+  const [timeline, activities, fields, reminders, gaps, analyticsRows] = await Promise.all([
     pool.query(
       `SELECT log.id, log.activity_id, log.event_time, log.event_timezone, log.field_values, log.note, log.created_at, log.created_by AS created_by_id, activity.name AS activity_name, activity.kind, activity.color, author.display_name AS created_by, COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id JOIN app_user AS author ON author.id = log.created_by WHERE log.child_id = $1 ORDER BY log.event_time DESC LIMIT 100`,
       [childId],
@@ -452,105 +522,145 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
       "SELECT starts_at, ends_at, reason FROM care_gap WHERE child_id = $1 ORDER BY starts_at DESC",
       [childId],
     ),
+    pool.query(
+      `WITH child_timezone AS (
+         SELECT timezone FROM child WHERE id = $1
+       ),
+       log_metrics AS (
+         SELECT log.activity_id,
+           (log.event_time AT TIME ZONE child_timezone.timezone)::date AS local_date,
+           log.event_time,
+           portions.portion_count,
+           portions.total_amount_ml,
+           CASE WHEN portions.portion_count > 0 THEN 1 ELSE 0 END AS measured_feed_count
+         FROM activity_log AS log
+         CROSS JOIN child_timezone
+         LEFT JOIN LATERAL (
+           SELECT COUNT(*)::int AS portion_count,
+             COALESCE(SUM(portion.amount_ml), 0)::float8 AS total_amount_ml
+           FROM feeding_portion AS portion
+           WHERE portion.log_id = log.id
+         ) AS portions ON true
+         WHERE log.child_id = $1
+       ),
+       daily AS (
+         SELECT activity_id, local_date,
+           COUNT(*)::int AS count,
+           COALESCE(SUM(portion_count), 0)::int AS portion_count,
+           COALESCE(SUM(total_amount_ml), 0)::float8 AS total_amount_ml,
+           COALESCE(SUM(measured_feed_count), 0)::int AS measured_feed_count
+         FROM log_metrics
+         GROUP BY activity_id, local_date
+       ),
+       average_metrics AS (
+         SELECT activity_id,
+           AVG(count)::float8 AS count,
+           AVG(portion_count)::float8 AS portion_count,
+           AVG(total_amount_ml)::float8 AS total_amount_ml,
+           SUM(total_amount_ml) / NULLIF(SUM(measured_feed_count), 0)::float8 AS average_amount_ml
+         FROM daily
+         GROUP BY activity_id
+       ),
+       calendar_day_metrics AS (
+         SELECT daily.*
+         FROM daily
+         CROSS JOIN child_timezone
+         WHERE daily.local_date = (now() AT TIME ZONE child_timezone.timezone)::date
+       ),
+       last_24_hours_metrics AS (
+         SELECT activity_id,
+           COUNT(*)::int AS count,
+           COALESCE(SUM(portion_count), 0)::int AS portion_count,
+           COALESCE(SUM(total_amount_ml), 0)::float8 AS total_amount_ml,
+           SUM(total_amount_ml) / NULLIF(SUM(measured_feed_count), 0)::float8 AS average_amount_ml
+         FROM log_metrics
+         WHERE event_time >= now() - INTERVAL '24 hours'
+         GROUP BY activity_id
+       ),
+       ranked_history AS (
+         SELECT daily.*, ROW_NUMBER() OVER (PARTITION BY activity_id ORDER BY local_date DESC) AS position
+         FROM daily
+         CROSS JOIN child_timezone
+         WHERE daily.local_date < (now() AT TIME ZONE child_timezone.timezone)::date
+       ),
+       history_metrics AS (
+         SELECT activity_id,
+           jsonb_agg(
+             jsonb_build_object(
+               'date', local_date,
+               'count', count,
+               'portion_count', portion_count,
+               'total_amount_ml', total_amount_ml,
+               'average_amount_ml', total_amount_ml / NULLIF(measured_feed_count, 0)::float8
+             )
+             ORDER BY local_date DESC
+           ) AS days
+         FROM ranked_history
+         WHERE position <= 14
+         GROUP BY activity_id
+       )
+       SELECT activity.id AS activity_id,
+         COALESCE(average_metrics.count, 0)::float8 AS average_count,
+         COALESCE(average_metrics.portion_count, 0)::float8 AS average_portion_count,
+         COALESCE(average_metrics.total_amount_ml, 0)::float8 AS average_total_amount_ml,
+         average_metrics.average_amount_ml,
+         COALESCE(calendar_day_metrics.count, 0)::int AS calendar_day_count,
+         COALESCE(calendar_day_metrics.portion_count, 0)::int AS calendar_day_portion_count,
+         COALESCE(calendar_day_metrics.total_amount_ml, 0)::float8 AS calendar_day_total_amount_ml,
+         calendar_day_metrics.total_amount_ml / NULLIF(calendar_day_metrics.measured_feed_count, 0)::float8 AS calendar_day_average_amount_ml,
+         COALESCE(last_24_hours_metrics.count, 0)::int AS last_24_hours_count,
+         COALESCE(last_24_hours_metrics.portion_count, 0)::int AS last_24_hours_portion_count,
+         COALESCE(last_24_hours_metrics.total_amount_ml, 0)::float8 AS last_24_hours_total_amount_ml,
+         last_24_hours_metrics.average_amount_ml AS last_24_hours_average_amount_ml,
+         COALESCE(history_metrics.days, '[]'::jsonb) AS history
+       FROM activity_definition AS activity
+       LEFT JOIN average_metrics ON average_metrics.activity_id = activity.id
+       LEFT JOIN calendar_day_metrics ON calendar_day_metrics.activity_id = activity.id
+       LEFT JOIN last_24_hours_metrics ON last_24_hours_metrics.activity_id = activity.id
+       LEFT JOIN history_metrics ON history_metrics.activity_id = activity.id
+       WHERE activity.child_id = $1 AND activity.archived_at IS NULL
+       ORDER BY activity.created_at`,
+      [childId],
+    ),
   ]);
   const activitiesWithFields = activities.rows.map((activity) => ({
     ...activity,
     fields: fields.rows.filter((field) => field.activity_id === activity.id),
   }));
-  const gapWindows = gaps.rows.map((gap) => ({
-    startsAt: gap.starts_at.toISOString(),
-    endsAt: gap.ends_at.toISOString(),
+  const metrics = (row: {
+    count: number;
+    portion_count: number;
+    total_amount_ml: number;
+    average_amount_ml: number | null;
+  }) => ({
+    count: Number(row.count),
+    portion_count: Number(row.portion_count),
+    total_amount_ml: Number(row.total_amount_ml),
+    average_amount_ml:
+      row.average_amount_ml === null ? null : Number(row.average_amount_ml),
+  });
+  const analytics = analyticsRows.rows.map((row) => ({
+    activity_id: row.activity_id,
+    average: metrics({
+      count: row.average_count,
+      portion_count: row.average_portion_count,
+      total_amount_ml: row.average_total_amount_ml,
+      average_amount_ml: row.average_amount_ml,
+    }),
+    calendar_day: metrics({
+      count: row.calendar_day_count,
+      portion_count: row.calendar_day_portion_count,
+      total_amount_ml: row.calendar_day_total_amount_ml,
+      average_amount_ml: row.calendar_day_average_amount_ml,
+    }),
+    last_24_hours: metrics({
+      count: row.last_24_hours_count,
+      portion_count: row.last_24_hours_portion_count,
+      total_amount_ml: row.last_24_hours_total_amount_ml,
+      average_amount_ml: row.last_24_hours_average_amount_ml,
+    }),
+    history: row.history.map(metrics),
   }));
-  const analytics = activitiesWithFields.map(
-    (activity: {
-      id: string;
-      kind: "feeding" | "diaper" | "custom";
-      fields: {
-        field_key: string;
-        label: string;
-        unit?: string;
-        field_type: string;
-      }[];
-    }) => {
-      const logs = timeline.rows.filter(
-        (log) => log.activity_id === activity.id,
-      );
-      const intervals = usableIntervals(
-        logs.map((log) => ({ eventTime: log.event_time.toISOString() })),
-        gapWindows,
-      );
-      const hours = intervals
-        .map((value) => value / 3_600_000)
-        .sort((left, right) => left - right);
-      const averageHours = hours.length
-        ? hours.reduce((sum, value) => sum + value, 0) / hours.length
-        : null;
-      const medianHours = hours.length
-        ? hours[Math.floor(hours.length / 2)]
-        : null;
-      return {
-        activity_id: activity.id,
-        count: logs.length,
-        average_hours: averageHours,
-        median_hours: medianHours,
-        interval_warning:
-          averageHours !== null &&
-          medianHours !== null &&
-          Math.abs(averageHours - medianHours) > medianHours * 0.25,
-        fields:
-          activity.kind === "feeding"
-            ? (() => {
-                const totals = logs
-                  .map((log) =>
-                    log.feeding_portions.reduce(
-                      (sum: number, portion: { amount_ml: number }) =>
-                        sum + Number(portion.amount_ml),
-                      0,
-                    ),
-                  )
-                  .filter((total: number) => total > 0);
-                return totals.length
-                  ? [
-                      {
-                        key: "total_milk",
-                        label: "Total milk",
-                        unit: "ml",
-                        count: totals.length,
-                        average:
-                          totals.reduce(
-                            (sum: number, value: number) => sum + value,
-                            0,
-                          ) / totals.length,
-                      },
-                    ]
-                  : [];
-              })()
-            : activity.fields
-                .filter(
-                  (field) =>
-                    field.field_type === "number" ||
-                    field.field_type === "duration",
-                )
-                .map((field) => {
-                  const values = logs
-                    .map((log) => Number(log.field_values[field.field_key]))
-                    .filter(Number.isFinite);
-                  return {
-                    key: field.field_key,
-                    label: field.label,
-                    unit: field.unit,
-                    count: values.length,
-                    average: values.length
-                      ? values.reduce(
-                          (sum: number, value: number) => sum + value,
-                          0,
-                        ) / values.length
-                      : null,
-                  };
-                }),
-      };
-    },
-  );
   response.json({
     role: access.rows[0].role,
     timeline: timeline.rows,

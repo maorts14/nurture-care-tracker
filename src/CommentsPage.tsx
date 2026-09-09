@@ -49,7 +49,7 @@ export function CommentsPage({
     <main className="detail-page">
       <DetailPageHeader
         title={t(item.activity_name)}
-        backLabel={t("← Timeline")}
+        locale={locale}
         onBack={onClose}
       />
       <section className="detail-list">

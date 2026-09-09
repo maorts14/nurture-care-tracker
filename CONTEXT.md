@@ -16,6 +16,14 @@ A measured component of one feeding session. A portion has a milk type, delivery
 
 A member who can record care in a child's shared care space.
 
+## Viewer
+
+A member who can view a child's shared care space but cannot record care.
+
 ## Owner
 
 The member responsible for a child's shared care space and its membership.
+
+## Child member
+
+A person with access to one child's shared care space. A member's role belongs to that child, not to their account globally.

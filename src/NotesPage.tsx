@@ -36,7 +36,7 @@ export function NotesPage({
     <main className="detail-page">
       <DetailPageHeader
         title={t("Notes")}
-        backLabel={t("← Timeline")}
+        locale={locale}
         onBack={onClose}
       />
       {write && (
