@@ -503,7 +503,7 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
   }
   const [timeline, activities, fields, reminders, gaps, analyticsRows] = await Promise.all([
     pool.query(
-      `SELECT log.id, log.activity_id, log.event_time, log.event_timezone, log.field_values, log.note, log.created_at, log.created_by AS created_by_id, activity.name AS activity_name, activity.kind, activity.color, author.display_name AS created_by, COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id JOIN app_user AS author ON author.id = log.created_by WHERE log.child_id = $1 ORDER BY log.event_time DESC LIMIT 100`,
+      `SELECT log.id, log.activity_id, log.event_time, log.event_timezone, log.field_values, log.note, log.created_at, log.created_by AS created_by_id, activity.name AS activity_name, activity.kind, activity.color, author.display_name AS created_by, COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions, comment_preview.comment_count, comment_preview.first_comment, comment_preview.first_comment_author FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id JOIN app_user AS author ON author.id = log.created_by LEFT JOIN LATERAL (SELECT COUNT(*)::int AS comment_count, (array_agg(comment.body ORDER BY comment.created_at, comment.id))[1] AS first_comment, (array_agg(comment_author.display_name ORDER BY comment.created_at, comment.id))[1] AS first_comment_author FROM log_comment AS comment JOIN app_user AS comment_author ON comment_author.id = comment.created_by WHERE comment.log_id = log.id) AS comment_preview ON true WHERE log.child_id = $1 ORDER BY log.event_time DESC LIMIT 100`,
       [childId],
     ),
     pool.query(
@@ -659,7 +659,18 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
       total_amount_ml: row.last_24_hours_total_amount_ml,
       average_amount_ml: row.last_24_hours_average_amount_ml,
     }),
-    history: row.history.map(metrics),
+    history: row.history.map(
+      (day: {
+        date: string;
+        count: number;
+        portion_count: number;
+        total_amount_ml: number;
+        average_amount_ml: number | null;
+      }) => ({
+        date: String(day.date).slice(0, 10),
+        ...metrics(day),
+      }),
+    ),
   }));
   response.json({
     role: access.rows[0].role,
@@ -1262,13 +1273,14 @@ app.post("/api/logs/:logId/comments", async (request, response) => {
   if (!session) return;
   const { body } = request.body as { body: string };
   const comment = await pool.query(
-    `INSERT INTO log_comment (log_id, body, created_by) SELECT log.id, $2, $3 FROM activity_log AS log JOIN child_membership AS membership ON membership.child_id = log.child_id WHERE log.id = $1 AND membership.user_id = $3 AND membership.role IN ('owner', 'caregiver') RETURNING *`,
+    `WITH inserted AS (INSERT INTO log_comment (log_id, body, created_by) SELECT log.id, $2, $3 FROM activity_log AS log JOIN child_membership AS membership ON membership.child_id = log.child_id WHERE log.id = $1 AND membership.user_id = $3 AND membership.role IN ('owner', 'caregiver') RETURNING *) SELECT inserted.*, log.child_id FROM inserted JOIN activity_log AS log ON log.id = inserted.log_id`,
     [request.params.logId, body, session.userId],
   );
   if (comment.rowCount !== 1) {
     response.status(403).json({ error: "You cannot comment on this activity" });
     return;
   }
+  io.to(childRoom(comment.rows[0].child_id)).emit("timeline:changed");
   response.status(201).json(comment.rows[0]);
 });
 app.put("/api/comments/:commentId", async (request, response) => {
@@ -1276,7 +1288,7 @@ app.put("/api/comments/:commentId", async (request, response) => {
   if (!session) return;
   const { body } = request.body as { body: string };
   const updated = await pool.query(
-    "UPDATE log_comment AS comment SET body = $1, updated_at = now() WHERE comment.id = $2 AND comment.created_by = $3 RETURNING id",
+    "UPDATE log_comment AS comment SET body = $1, updated_at = now() FROM activity_log AS log WHERE comment.id = $2 AND comment.created_by = $3 AND log.id = comment.log_id RETURNING comment.id, log.child_id",
     [body, request.params.commentId, session.userId],
   );
   if (updated.rowCount !== 1) {
@@ -1285,13 +1297,14 @@ app.put("/api/comments/:commentId", async (request, response) => {
       .json({ error: "Only the comment creator can edit this comment" });
     return;
   }
+  io.to(childRoom(updated.rows[0].child_id)).emit("timeline:changed");
   response.status(204).end();
 });
 app.delete("/api/comments/:commentId", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
   const deleted = await pool.query(
-    "DELETE FROM log_comment AS comment WHERE comment.id = $1 AND comment.created_by = $2 RETURNING id",
+    "DELETE FROM log_comment AS comment USING activity_log AS log WHERE comment.id = $1 AND comment.created_by = $2 AND log.id = comment.log_id RETURNING comment.id, log.child_id",
     [request.params.commentId, session.userId],
   );
   if (deleted.rowCount !== 1) {
@@ -1300,6 +1313,7 @@ app.delete("/api/comments/:commentId", async (request, response) => {
       .json({ error: "Only the comment creator can delete this comment" });
     return;
   }
+  io.to(childRoom(deleted.rows[0].child_id)).emit("timeline:changed");
   response.status(204).end();
 });
 app.get("/api/children/:childId/export.csv", async (request, response) => {

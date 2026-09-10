@@ -16,6 +16,7 @@ import { timeZoneLabel } from "./timezones";
 import { translate } from "./i18n";
 import {
   Check,
+  ChevronDown,
   ClipboardPlus,
   Clock3,
   Copy,
@@ -62,6 +63,9 @@ type Event = {
   created_by: string;
   created_by_id: string;
   feeding_portions: FeedingPortion[];
+  comment_count?: number;
+  first_comment?: string | null;
+  first_comment_author?: string | null;
 };
 type FeedingPortion = {
   kind: "breast_milk" | "formula";
@@ -256,6 +260,7 @@ export default function App() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [selected, setSelected] = useState<Event | null>(null);
   const [detailEvent, setDetailEvent] = useState<Event | null>(null);
+  const [selectedReminder, setSelectedReminder] = useState<Reminder | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [comment, setComment] = useState("");
   const [inviteUrl, setInviteUrl] = useState("");
@@ -301,6 +306,15 @@ export default function App() {
       .map((part) => part.value)
       .join("-");
   const todayDayKey = localDayKey(new Date());
+  const summaryTime = (value: string | Date) => {
+    const isToday = localDayKey(value) === todayDayKey;
+    return new Intl.DateTimeFormat(user?.locale === "he" ? "he-IL" : "en-US", {
+      timeZone: childTimeZone,
+      ...(isToday
+        ? { hour: "numeric", minute: "2-digit" }
+        : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+    }).format(new Date(value));
+  };
   const todayEvents = events.filter(
     (event) => localDayKey(event.event_time) === todayDayKey,
   );
@@ -668,35 +682,27 @@ export default function App() {
     setPanel(null);
     await loadDash(child.id);
   }
-  async function updateReminder(item: Reminder) {
-    if (!child) return;
-    const title = prompt(t("Reminder title"), item.title);
-    if (title === null || !title.trim()) return;
-    const schedule =
-      item.kind === "interval"
-        ? prompt(
-            t("Repeat every how many hours?"),
-            String((item.interval_minutes ?? 60) / 60),
-          )
-        : prompt(
-            t("Date and time (YYYY-MM-DDTHH:MM)"),
-            item.scheduled_for
-              ? item.scheduled_for.slice(0, 16)
-              : localDateTime(),
-          );
-    if (schedule === null || !schedule.trim()) return;
-    await api(`/api/reminders/${item.id}`, {
+  async function updateReminder(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!child || !selectedReminder) return;
+    const form = new FormData(event.currentTarget);
+    const kind = String(form.get("kind")) as Reminder["kind"];
+    const when = String(form.get("when"));
+    if (kind === "one_time" && !when)
+      throw new Error(t("Choose a date and time."));
+    await api(`/api/reminders/${selectedReminder.id}`, {
       method: "PUT",
       body: JSON.stringify({
-        title,
-        activityId: item.activity_id ?? null,
-        kind: item.kind,
+        title: form.get("title"),
+        activityId: form.get("activityId") || null,
+        kind,
         intervalMinutes:
-          item.kind === "interval" ? Number(schedule) * 60 : null,
+          kind === "interval" ? Number(form.get("hours")) * 60 : null,
         scheduledFor:
-          item.kind === "one_time" ? new Date(schedule).toISOString() : null,
+          kind === "one_time" ? new Date(when).toISOString() : null,
       }),
     });
+    setSelectedReminder(null);
     await loadDash(child.id);
   }
   async function completeReminder(item: Reminder) {
@@ -707,6 +713,7 @@ export default function App() {
   async function deleteReminder(item: Reminder) {
     if (!child || !confirm(t("Delete this reminder?"))) return;
     await api(`/api/reminders/${item.id}`, { method: "DELETE" });
+    setSelectedReminder((current) => (current?.id === item.id ? null : current));
     await loadDash(child.id);
   }
   async function gap(event: FormEvent<HTMLFormElement>) {
@@ -1175,13 +1182,13 @@ export default function App() {
           <div>
             <p>{t("Last feeding")}</p>
             <strong>
-              {lastFeed ? clock(lastFeed.event_time, user.locale) : "—"}
+              {lastFeed ? summaryTime(lastFeed.event_time) : "—"}
             </strong>
           </div>
           <div>
             <p>{t("Next expected")}</p>
             <strong>
-              {expected ? clock(expected.toISOString(), user.locale) : "—"}
+              {expected ? summaryTime(expected) : "—"}
             </strong>
           </div>
           <div>
@@ -1205,6 +1212,7 @@ export default function App() {
             setLogOpen(true);
           } : undefined}
           onOpen={() => setPanel("reminder")}
+          onSelect={setSelectedReminder}
           onComplete={completeReminder}
           onDelete={deleteReminder}
         />
@@ -1226,6 +1234,7 @@ export default function App() {
               const dayKey = localDayKey(event.event_time);
               const startsNewDay =
                 index === 0 || localDayKey(events[index - 1].event_time) !== dayKey;
+              const commentAuthor = event.first_comment_author?.trim().split(/\s+/)[0];
               return (
                 <Fragment key={event.id}>
                   {startsNewDay && (
@@ -1258,6 +1267,25 @@ export default function App() {
                       </div>
                       <p>{eventDetail(event, dash.activities, t)}</p>
                       {event.note && <small>“{event.note}”</small>}
+                      {!!event.first_comment && (
+                        <div className="event-comment-preview">
+                          <MessageCircle size={13} aria-hidden="true" />
+                          {commentAuthor && <strong>{commentAuthor}:</strong>}
+                          <span className="event-comment-text">{event.first_comment}</span>
+                          {(event.comment_count ?? 0) > 1 && (
+                            <button
+                              type="button"
+                              onClick={(clickEvent) => {
+                                clickEvent.stopPropagation();
+                                openComments(event);
+                              }}
+                            >
+                              {t("Show more")}
+                              <ChevronDown size={13} aria-hidden="true" />
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <button
                       className="more"
@@ -1291,6 +1319,17 @@ export default function App() {
           locale={user.locale}
           timeZone={child.timezone}
           onClose={() => setDetailEvent(null)}
+        />
+      )}
+      {selectedReminder && (
+        <ReminderDetailModal
+          reminder={selectedReminder}
+          activities={dash.activities}
+          locale={user.locale}
+          owner={owner}
+          onClose={() => setSelectedReminder(null)}
+          onSave={updateReminder}
+          onDelete={() => deleteReminder(selectedReminder)}
         />
       )}
       {logOpen && (
@@ -1466,11 +1505,106 @@ function InvitationPreviewModal({
   );
 }
 
+function ReminderDetailModal({
+  reminder,
+  activities,
+  locale,
+  owner,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  reminder: Reminder;
+  activities: Activity[];
+  locale: User["locale"];
+  owner: boolean;
+  onClose: () => void;
+  onSave: (event: FormEvent<HTMLFormElement>) => void;
+  onDelete: () => void;
+}) {
+  const t = (text: string) => translate(locale, text);
+  const activity = activities.find((item) => item.id === reminder.activity_id);
+  const schedule =
+    reminder.kind === "one_time" && reminder.scheduled_for
+      ? new Intl.DateTimeFormat(locale === "he" ? "he-IL" : "en-US", {
+          dateStyle: "medium",
+          timeStyle: "short",
+        }).format(new Date(reminder.scheduled_for))
+      : `${t("Every")} ${Math.round((reminder.interval_minutes ?? 0) / 60)} ${t("hours after activity")}`;
+  const heading = (
+    <header className="reminder-detail-heading">
+      <h2>{reminder.title}</h2>
+      <button
+        type="button"
+        className="reminder-detail-close"
+        onClick={onClose}
+        aria-label={t("Close")}
+      >
+        <X size={22} />
+      </button>
+    </header>
+  );
+
+  return (
+    <ModalBackdrop onClose={onClose}>
+      <section className="log-modal reminder-detail-modal" role="dialog" aria-modal="true">
+        {owner ? (
+          <form onSubmit={onSave}>
+            {heading}
+            <label>
+              {t("Title")}
+              <input name="title" defaultValue={reminder.title} required />
+            </label>
+            <label>
+              {t("Activity")}
+              <select name="activityId" defaultValue={reminder.activity_id ?? ""}>
+                <option value="">{t("None")}</option>
+                {activities.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {t(item.name)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <ReminderScheduleFields
+              locale={locale}
+              initialKind={reminder.kind}
+              initialIntervalHours={(reminder.interval_minutes ?? 180) / 60}
+              initialScheduledFor={reminder.scheduled_for}
+            />
+            <div className="modal-actions">
+              <button className="primary submit">{t("Save changes")}</button>
+              <button type="button" className="text-button danger" onClick={onDelete}>
+                {t("Delete")}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <>
+            {heading}
+            <dl className="event-detail-list">
+              <div>
+                <dt>{t("Activity")}</dt>
+                <dd>{activity ? t(activity.name) : t("None")}</dd>
+              </div>
+              <div>
+                <dt>{t("Schedule")}</dt>
+                <dd>{schedule}</dd>
+              </div>
+            </dl>
+          </>
+        )}
+      </section>
+    </ModalBackdrop>
+  );
+}
+
 function UpcomingList({
   reminders,
   locale,
   owner,
   onOpen,
+  onSelect,
   onComplete,
   onDelete,
   onLogActivity,
@@ -1479,6 +1613,7 @@ function UpcomingList({
   locale: User["locale"];
   owner: boolean;
   onOpen: () => void;
+  onSelect: (reminder: Reminder) => void;
   onComplete: (reminder: Reminder) => void;
   onDelete: (reminder: Reminder) => void;
   onLogActivity?: (activityId: string) => void;
@@ -1497,7 +1632,19 @@ function UpcomingList({
       {reminders.length ? (
         <div className="upcoming-items">
           {reminders.map((reminder) => (
-            <article className="due-item" key={reminder.id}>
+            <article
+              className="due-item due-item-open-detail"
+              key={reminder.id}
+              tabIndex={0}
+              role="button"
+              onClick={() => onSelect(reminder)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onSelect(reminder);
+                }
+              }}
+            >
               <span className="due-icon">
                 {reminder.kind === "one_time" ? (
                   <HeartPulse size={17} />
@@ -1519,7 +1666,10 @@ function UpcomingList({
                     className="due-log"
                     aria-label={`${t("Log activity")} ${reminder.title}`}
                     title={`${t("Log activity")} ${reminder.title}`}
-                    onClick={() => onLogActivity(reminder.activity_id!)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onLogActivity(reminder.activity_id!);
+                    }}
                   >
                     <ClipboardPlus size={14} />
                   </button>
@@ -1529,7 +1679,10 @@ function UpcomingList({
                   aria-label={`${t("Mark complete")} ${reminder.title}`}
                   title={`${t("Mark complete")} ${reminder.title}`}
                   data-tooltip={t("Mark complete")}
-                  onClick={() => onComplete(reminder)}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onComplete(reminder);
+                  }}
                 >
                   <Check size={13} />
                 </button>
@@ -1538,7 +1691,10 @@ function UpcomingList({
                     className="more"
                     aria-label={`${t("Delete")} ${reminder.title}`}
                     title={`${t("Delete")} ${reminder.title}`}
-                    onClick={() => onDelete(reminder)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDelete(reminder);
+                    }}
                   >
                     <Trash2 size={14} />
                   </button>

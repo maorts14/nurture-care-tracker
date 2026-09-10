@@ -3,13 +3,26 @@ import { Locale, translate } from "../i18n";
 
 type ReminderScheduleFieldsProps = {
   locale: Locale;
+  initialKind?: "interval" | "one_time";
+  initialIntervalHours?: number;
+  initialScheduledFor?: string;
 };
 
 export function ReminderScheduleFields({
   locale,
+  initialKind = "interval",
+  initialIntervalHours = 3,
+  initialScheduledFor,
 }: ReminderScheduleFieldsProps) {
-  const [oneTime, setOneTime] = useState(false);
+  const [oneTime, setOneTime] = useState(initialKind === "one_time");
   const t = (text: string) => translate(locale, text);
+  const initialWhen = initialScheduledFor
+    ? (() => {
+        const date = new Date(initialScheduledFor);
+        date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+        return date.toISOString().slice(0, 16);
+      })()
+    : undefined;
 
   return (
     <>
@@ -28,7 +41,7 @@ export function ReminderScheduleFields({
           name="hours"
           type="number"
           min="1"
-          defaultValue="3"
+          defaultValue={initialIntervalHours}
           disabled={oneTime}
           required={!oneTime}
         />
@@ -38,6 +51,7 @@ export function ReminderScheduleFields({
         <input
           name="when"
           type="datetime-local"
+          defaultValue={initialWhen}
           disabled={!oneTime}
           required={oneTime}
         />

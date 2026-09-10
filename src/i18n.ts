@@ -144,6 +144,7 @@ const hebrew: Record<string, string> = {
   shared: "משותף",
   "CARE RECORD": "רשומת טיפול",
   Comment: "תגובה",
+  "Show more": "הצגת עוד",
   "Save comment": "שמירת תגובה",
   "Delete this care record": "מחיקת רשומת טיפול",
   "Recurring reminders reset from the most recent matching activity.":
