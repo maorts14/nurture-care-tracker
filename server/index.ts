@@ -501,10 +501,14 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
     response.status(403).json({ error: "Child access is required" });
     return;
   }
-  const [timeline, activities, fields, reminders, gaps, analyticsRows] = await Promise.all([
+  const [timeline, insightPreference, activities, fields, reminders, gaps, analyticsRows] = await Promise.all([
     pool.query(
       `SELECT log.id, log.activity_id, log.event_time, log.event_timezone, log.field_values, log.note, log.created_at, log.created_by AS created_by_id, activity.name AS activity_name, activity.kind, activity.color, author.display_name AS created_by, COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions, comment_preview.comment_count, comment_preview.first_comment, comment_preview.first_comment_author FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id JOIN app_user AS author ON author.id = log.created_by LEFT JOIN LATERAL (SELECT COUNT(*)::int AS comment_count, (array_agg(comment.body ORDER BY comment.created_at, comment.id))[1] AS first_comment, (array_agg(comment_author.display_name ORDER BY comment.created_at, comment.id))[1] AS first_comment_author FROM log_comment AS comment JOIN app_user AS comment_author ON comment_author.id = comment.created_by WHERE comment.log_id = log.id) AS comment_preview ON true WHERE log.child_id = $1 ORDER BY log.event_time DESC LIMIT 100`,
       [childId],
+    ),
+    pool.query(
+      "SELECT activity_ids FROM child_insight_preference WHERE child_id = $1 AND user_id = $2",
+      [childId, session.userId],
     ),
     pool.query(
       "SELECT id, name, kind, color FROM activity_definition WHERE child_id = $1 AND archived_at IS NULL ORDER BY created_at",
@@ -679,7 +683,32 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
     reminders: reminders.rows,
     gaps: gaps.rows,
     analytics,
+    insight_activity_ids:
+      insightPreference.rows[0]?.activity_ids?.map(String) ?? null,
   });
+});
+app.put("/api/children/:childId/insight-preferences", async (request, response) => {
+  const session = requireSession(request, response);
+  if (!session) return;
+  const { childId } = request.params;
+  const access = await membership(childId, session.userId);
+  if (access.rowCount !== 1) {
+    response.status(403).json({ error: "Child access is required" });
+    return;
+  }
+  const { activityIds } = request.body as { activityIds?: unknown };
+  if (!Array.isArray(activityIds) || !activityIds.every((id) => typeof id === "string")) {
+    response.status(400).json({ error: "Activity selections are required" });
+    return;
+  }
+  await pool.query(
+    `INSERT INTO child_insight_preference (child_id, user_id, activity_ids)
+     VALUES ($1, $2, $3::jsonb)
+     ON CONFLICT (child_id, user_id)
+     DO UPDATE SET activity_ids = EXCLUDED.activity_ids, updated_at = now()`,
+    [childId, session.userId, JSON.stringify([...new Set(activityIds)])],
+  );
+  response.status(204).end();
 });
 app.post("/api/children/:childId/logs", async (request, response) => {
   const session = requireSession(request, response);

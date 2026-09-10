@@ -105,6 +105,7 @@ type Dashboard = {
   reminders: Reminder[];
   gaps: { starts_at: string; ends_at: string }[];
   analytics: ActivityAnalytics[];
+  insight_activity_ids: string[] | null;
 };
 type Child = { id: string; name: string; timezone: string; role: string };
 type ChildMember = {
@@ -357,6 +358,14 @@ export default function App() {
         ? old
         : (data.activities[0]?.id ?? ""),
     );
+  };
+  const saveInsightActivities = async (activityIds: string[]) => {
+    if (!child) return;
+    await api(`/api/children/${child.id}/insight-preferences`, {
+      method: "PUT",
+      body: JSON.stringify({ activityIds }),
+    });
+    await loadDash(child.id);
   };
   const loadMembers = async (id: string) => {
     setMembers(await api<ChildMember[]>(`/api/children/${id}/members`));
@@ -1117,6 +1126,7 @@ export default function App() {
             locale={user.locale}
             onBack={() => navigate(`/children/${child.id}`)}
             onOpenNavigation={() => setMobileSidebarOpen(true)}
+            onSaveInsightActivities={saveInsightActivities}
           />
         ) : caregiversOpen ? (
           <CaregiversPage

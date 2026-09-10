@@ -1988,6 +1988,83 @@ nav em {
   justify-content: space-between;
   gap: 24px;
 }
+.analytics-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.insights-settings-button {
+  display: grid;
+  flex: 0 0 auto;
+  width: 40px;
+  min-height: 40px;
+  place-items: center;
+  margin-top: 4px;
+  border: 1px solid #ded7cf;
+  border-radius: 9px;
+  color: #655e57;
+  background: #fffdf9;
+  cursor: pointer;
+}
+.insights-settings-button:hover {
+  border-color: #cfc5ba;
+  color: #2f2a26;
+  background: #fff;
+}
+.insights-settings-modal {
+  max-width: 420px;
+}
+.insights-settings-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.insights-settings-heading h2 {
+  margin-bottom: 8px;
+}
+.insights-settings-close {
+  display: grid;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  color: #726a63;
+}
+.insights-settings-modal > p {
+  margin: 0 0 18px;
+  color: #756d65;
+  font-size: 14px;
+}
+.insights-activity-options {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.insights-activity-options label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 4px;
+  border-bottom: 1px solid #e8e1d8;
+  font-size: 15px;
+  cursor: pointer;
+}
+.insights-activity-options input {
+  width: 18px;
+  height: 18px;
+  accent-color: #f3654b;
+}
+.insights-activity-options .analytics-dot {
+  width: 9px;
+  height: 9px;
+}
+.insights-settings-modal .modal-actions {
+  margin-top: 22px;
+}
 .pdf-export-button {
   display: inline-flex;
   flex: 0 0 auto;

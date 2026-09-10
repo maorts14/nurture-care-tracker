@@ -17,6 +17,8 @@ const hebrew: Record<string, string> = {
   "Local sample:": "דוגמה מקומית:",
   Timeline: "ציר זמן",
   Insights: "תובנות",
+  "Insights settings": "הגדרות תובנות",
+  "Choose activities to show in Insights.": "בחרו אילו פעילויות להציג בתובנות.",
   Upcoming: "אירועים קרובים",
   "Log care": "תיעוד טיפול",
   "Manage care": "ניהול טיפול",

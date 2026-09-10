@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { ChevronDown, FileDown, Menu } from "lucide-react";
+import { ChevronDown, FileDown, Menu, Settings2, X } from "lucide-react";
+import { ModalBackdrop } from "./components/ModalBackdrop";
 import { TimelineBackButton } from "./components/TimelineBackButton";
 import { Locale, translate as tr } from "./i18n";
 
@@ -24,10 +25,15 @@ type Activity = {
 };
 type Props = {
   child: { id: string; name: string };
-  dashboard: { activities: Activity[]; analytics: ActivityStat[] };
+  dashboard: {
+    activities: Activity[];
+    analytics: ActivityStat[];
+    insight_activity_ids: string[] | null;
+  };
   locale: Locale;
   onBack: () => void;
   onOpenNavigation: () => void;
+  onSaveInsightActivities: (activityIds: string[]) => Promise<void>;
 };
 
 const pretty = (value: number | null) =>
@@ -88,9 +94,19 @@ export function AnalyticsView({
   locale,
   onBack,
   onOpenNavigation,
+  onSaveInsightActivities,
 }: Props) {
   const [period, setPeriod] = useState<"calendar_day" | "last_24_hours">(
     "calendar_day",
+  );
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const defaultActivityIds = dashboard.activities
+    .filter((activity) => activity.kind === "feeding" || activity.kind === "diaper")
+    .map((activity) => activity.id);
+  const selectedActivityIds =
+    dashboard.insight_activity_ids ?? defaultActivityIds;
+  const [settingsActivityIds, setSettingsActivityIds] = useState<string[]>(
+    selectedActivityIds,
   );
   const t = (text: string) => tr(locale, text);
   const activityById = new Map(
@@ -102,6 +118,17 @@ export function AnalyticsView({
     locale === "he" ? "he-IL" : "en-US",
     { weekday: "short", month: "short", day: "numeric" },
   );
+  const openSettings = () => {
+    setSettingsActivityIds(selectedActivityIds);
+    setSettingsOpen(true);
+  };
+  const toggleActivity = (activityId: string) => {
+    setSettingsActivityIds((ids) =>
+      ids.includes(activityId)
+        ? ids.filter((id) => id !== activityId)
+        : [...ids, activityId],
+    );
+  };
 
   return (
     <section className="analytics-page">
@@ -128,17 +155,27 @@ export function AnalyticsView({
               </>
             )}
           </h1>
-          <button
-            className="pdf-export-button"
-            aria-label={t("Export PDF")}
-            title={t("Export PDF")}
-            onClick={() =>
-              window.open(`/api/children/${child.id}/export.report`, "_blank")
-            }
-          >
-            <FileDown size={17} aria-hidden="true" />
-            <span className="pdf-export-label">{t("Export PDF")}</span>
-          </button>
+          <div className="analytics-heading-actions">
+            <button
+              className="insights-settings-button"
+              aria-label={t("Insights settings")}
+              title={t("Insights settings")}
+              onClick={openSettings}
+            >
+              <Settings2 size={18} aria-hidden="true" />
+            </button>
+            <button
+              className="pdf-export-button"
+              aria-label={t("Export PDF")}
+              title={t("Export PDF")}
+              onClick={() =>
+                window.open(`/api/children/${child.id}/export.report`, "_blank")
+              }
+            >
+              <FileDown size={17} aria-hidden="true" />
+              <span className="pdf-export-label">{t("Export PDF")}</span>
+            </button>
+          </div>
         </div>
         <div className="analytics-period-toggle" aria-label={t("Current period")}>
           <button
@@ -157,7 +194,9 @@ export function AnalyticsView({
         <p>{t("Declared care gaps are excluded from all timing statistics.")}</p>
       </header>
       <section className="analytics-cards">
-        {dashboard.analytics.map((stat) => {
+        {dashboard.analytics
+          .filter((stat) => selectedActivityIds.includes(stat.activity_id))
+          .map((stat) => {
           const activity = activityById.get(stat.activity_id);
           const feeding = activity?.kind === "feeding";
           const current = stat[period];
@@ -207,8 +246,54 @@ export function AnalyticsView({
               </details>
             </article>
           );
-        })}
+          })}
       </section>
+      {settingsOpen && (
+        <ModalBackdrop onClose={() => setSettingsOpen(false)}>
+          <form
+            className="log-modal insights-settings-modal"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              await onSaveInsightActivities(settingsActivityIds);
+              setSettingsOpen(false);
+            }}
+          >
+            <div className="insights-settings-heading">
+              <h2>{t("Insights settings")}</h2>
+              <button
+                type="button"
+                className="insights-settings-close"
+                aria-label={t("Close")}
+                onClick={() => setSettingsOpen(false)}
+              >
+                <X size={22} />
+              </button>
+            </div>
+            <p>{t("Choose activities to show in Insights.")}</p>
+            <fieldset className="insights-activity-options">
+              {dashboard.activities.map((activity) => (
+                <label key={activity.id}>
+                  <input
+                    type="checkbox"
+                    checked={settingsActivityIds.includes(activity.id)}
+                    onChange={() => toggleActivity(activity.id)}
+                  />
+                  <span
+                    className="analytics-dot"
+                    style={{ background: activity.color }}
+                  />
+                  {t(activity.name)}
+                </label>
+              ))}
+            </fieldset>
+            <div className="modal-actions">
+              <button className="submit primary" type="submit">
+                {t("Save changes")}
+              </button>
+            </div>
+          </form>
+        </ModalBackdrop>
+      )}
     </section>
   );
 }
