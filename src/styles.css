@@ -575,20 +575,20 @@ nav em {
 }
 .upcoming-items {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  grid-template-columns: 1fr;
   border-top: 1px solid #e2ddd5;
 }
 .upcoming-list .due-item {
   min-width: 0;
-  padding: 15px 14px 15px 0;
+  padding: 15px 0;
   border: 0;
-  border-right: 1px solid #e2ddd5;
+  border-bottom: 1px solid #e2ddd5;
 }
 .upcoming-list .due-item + .due-item {
-  padding-left: 14px;
+  padding-left: 0;
 }
 .upcoming-list .due-item:last-child {
-  border-right: 0;
+  border-bottom: 0;
 }
 .upcoming-empty {
   margin: 0;
