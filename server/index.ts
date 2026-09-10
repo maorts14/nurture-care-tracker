@@ -556,6 +556,10 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
          FROM log_metrics
          GROUP BY activity_id, local_date
        ),
+       first_record AS (
+         SELECT MIN(local_date) AS first_record_date
+         FROM log_metrics
+       ),
        average_metrics AS (
          SELECT activity_id,
            AVG(count)::float8 AS count,
@@ -604,6 +608,7 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
          GROUP BY activity_id
        )
        SELECT activity.id AS activity_id,
+         first_record.first_record_date,
          COALESCE(average_metrics.count, 0)::float8 AS average_count,
          COALESCE(average_metrics.portion_count, 0)::float8 AS average_portion_count,
          COALESCE(average_metrics.total_amount_ml, 0)::float8 AS average_total_amount_ml,
@@ -618,6 +623,7 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
          last_24_hours_metrics.average_amount_ml AS last_24_hours_average_amount_ml,
          COALESCE(history_metrics.days, '[]'::jsonb) AS history
        FROM activity_definition AS activity
+       CROSS JOIN first_record
        LEFT JOIN average_metrics ON average_metrics.activity_id = activity.id
        LEFT JOIN calendar_day_metrics ON calendar_day_metrics.activity_id = activity.id
        LEFT JOIN last_24_hours_metrics ON last_24_hours_metrics.activity_id = activity.id
@@ -683,6 +689,11 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
     reminders: reminders.rows,
     gaps: gaps.rows,
     analytics,
+    first_record_date: analyticsRows.rows[0]?.first_record_date
+      ? new Date(analyticsRows.rows[0].first_record_date)
+          .toISOString()
+          .slice(0, 10)
+      : null,
     insight_activity_ids:
       insightPreference.rows[0]?.activity_ids?.map(String) ?? null,
   });
@@ -1413,41 +1424,235 @@ app.get("/api/children/:childId/export.report", async (request, response) => {
     response.status(403).send("Child access is required");
     return;
   }
-  const [child, logs, reminders] = await Promise.all([
-    pool.query("SELECT name FROM child WHERE id = $1", [
-      request.params.childId,
-    ]),
-    pool.query(
-      `SELECT activity.name, log.event_time, log.field_values, log.note, author.display_name, COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id JOIN app_user AS author ON author.id = log.created_by WHERE log.child_id = $1 ORDER BY log.event_time DESC`,
-      [request.params.childId],
-    ),
-    pool.query(
-      "SELECT title, kind, scheduled_for, interval_minutes FROM reminder WHERE child_id = $1 AND completed_at IS NULL ORDER BY scheduled_for NULLS LAST",
-      [request.params.childId],
-    ),
-  ]);
+  const activityValues =
+    typeof request.query.activities === "string"
+      ? request.query.activities.split(",")
+      : [];
+  const activityIds = activityValues.filter((id) =>
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id),
+  );
+  if (!activityIds.length) {
+    response.status(400).send("Select at least one activity");
+    return;
+  }
+  const period =
+    request.query.period === "last_24_hours"
+      ? "last_24_hours"
+      : "calendar_day";
+  const includeHistory = request.query.history === "true";
+  const today = new Date().toISOString().slice(0, 10);
+  const historyStart =
+    typeof request.query.historyStart === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(request.query.historyStart)
+      ? request.query.historyStart
+      : today;
+  const historyEnd =
+    typeof request.query.historyEnd === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(request.query.historyEnd)
+      ? request.query.historyEnd
+      : today;
+  if (historyStart > historyEnd) {
+    response.status(400).send("History start must be before history end");
+    return;
+  }
+  const locale = request.query.locale === "he" ? "he" : "en";
+  const report = await pool.query(
+    `WITH child_context AS (
+       SELECT name, timezone FROM child WHERE id = $1
+     ),
+     selected_activities AS (
+       SELECT id, name, kind, color
+       FROM activity_definition
+       WHERE child_id = $1 AND id = ANY($2::uuid[]) AND archived_at IS NULL
+     ),
+     log_metrics AS (
+       SELECT log.activity_id,
+         (log.event_time AT TIME ZONE child_context.timezone)::date AS local_date,
+         log.event_time,
+         portions.portion_count,
+         portions.total_amount_ml,
+         CASE WHEN portions.portion_count > 0 THEN 1 ELSE 0 END AS measured_feed_count
+       FROM activity_log AS log
+       CROSS JOIN child_context
+       JOIN selected_activities AS activity ON activity.id = log.activity_id
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS portion_count,
+           COALESCE(SUM(portion.amount_ml), 0)::float8 AS total_amount_ml
+         FROM feeding_portion AS portion
+         WHERE portion.log_id = log.id
+       ) AS portions ON true
+       WHERE log.child_id = $1
+     ),
+     daily AS (
+       SELECT activity_id, local_date,
+         COUNT(*)::int AS count,
+         COALESCE(SUM(portion_count), 0)::int AS portion_count,
+         COALESCE(SUM(total_amount_ml), 0)::float8 AS total_amount_ml,
+         COALESCE(SUM(measured_feed_count), 0)::int AS measured_feed_count
+       FROM log_metrics
+       GROUP BY activity_id, local_date
+     ),
+     average_metrics AS (
+       SELECT activity_id,
+         AVG(count)::float8 AS count,
+         AVG(portion_count)::float8 AS portion_count,
+         AVG(total_amount_ml)::float8 AS total_amount_ml,
+         SUM(total_amount_ml) / NULLIF(SUM(measured_feed_count), 0)::float8 AS average_amount_ml
+       FROM daily
+       GROUP BY activity_id
+     ),
+     calendar_day_metrics AS (
+       SELECT daily.* FROM daily CROSS JOIN child_context
+       WHERE daily.local_date = (now() AT TIME ZONE child_context.timezone)::date
+     ),
+     last_24_hours_metrics AS (
+       SELECT activity_id,
+         COUNT(*)::int AS count,
+         COALESCE(SUM(portion_count), 0)::int AS portion_count,
+         COALESCE(SUM(total_amount_ml), 0)::float8 AS total_amount_ml,
+         SUM(total_amount_ml) / NULLIF(SUM(measured_feed_count), 0)::float8 AS average_amount_ml
+       FROM log_metrics
+       WHERE event_time >= now() - INTERVAL '24 hours'
+       GROUP BY activity_id
+     ),
+     history_metrics AS (
+       SELECT activity_id,
+         jsonb_agg(
+           jsonb_build_object(
+             'date', local_date,
+             'count', count,
+             'portion_count', portion_count,
+             'total_amount_ml', total_amount_ml,
+             'average_amount_ml', total_amount_ml / NULLIF(measured_feed_count, 0)::float8
+           ) ORDER BY local_date DESC
+         ) AS days
+       FROM daily
+       WHERE local_date BETWEEN $3::date AND $4::date
+       GROUP BY activity_id
+     )
+     SELECT child_context.name AS child_name, activity.id, activity.name, activity.kind,
+       COALESCE(average_metrics.count, 0)::float8 AS average_count,
+       COALESCE(average_metrics.portion_count, 0)::float8 AS average_portion_count,
+       COALESCE(average_metrics.total_amount_ml, 0)::float8 AS average_total_amount_ml,
+       average_metrics.average_amount_ml,
+       COALESCE(calendar_day_metrics.count, 0)::int AS calendar_day_count,
+       COALESCE(calendar_day_metrics.portion_count, 0)::int AS calendar_day_portion_count,
+       COALESCE(calendar_day_metrics.total_amount_ml, 0)::float8 AS calendar_day_total_amount_ml,
+       calendar_day_metrics.total_amount_ml / NULLIF(calendar_day_metrics.measured_feed_count, 0)::float8 AS calendar_day_average_amount_ml,
+       COALESCE(last_24_hours_metrics.count, 0)::int AS last_24_hours_count,
+       COALESCE(last_24_hours_metrics.portion_count, 0)::int AS last_24_hours_portion_count,
+       COALESCE(last_24_hours_metrics.total_amount_ml, 0)::float8 AS last_24_hours_total_amount_ml,
+       last_24_hours_metrics.average_amount_ml AS last_24_hours_average_amount_ml,
+       COALESCE(history_metrics.days, '[]'::jsonb) AS history
+     FROM selected_activities AS activity
+     CROSS JOIN child_context
+     LEFT JOIN average_metrics ON average_metrics.activity_id = activity.id
+     LEFT JOIN calendar_day_metrics ON calendar_day_metrics.activity_id = activity.id
+     LEFT JOIN last_24_hours_metrics ON last_24_hours_metrics.activity_id = activity.id
+     LEFT JOIN history_metrics ON history_metrics.activity_id = activity.id
+     ORDER BY activity.name`,
+    [request.params.childId, activityIds, historyStart, historyEnd],
+  );
+  if (!report.rowCount) {
+    response.status(400).send("No selected activities are available");
+    return;
+  }
   const escapeHtml = (value: unknown) =>
     String(value ?? "")
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;");
-  const logRows = logs.rows
+  const words =
+    locale === "he"
+      ? {
+          title: "דפוסי טיפול",
+          average: "ממוצע",
+          today: "היום, החל מ־00:00",
+          last24: "24 השעות האחרונות",
+          records: "רשומות",
+          feedings: "האכלות",
+          portions: "מנות",
+          total: "סך החלב",
+          perFeed: "ממוצע להאכלה",
+          history: "היסטוריה",
+          noHistory: "אין נתונים בטווח שנבחר",
+          print: "הדפסה / שמירה כ־PDF",
+        }
+      : {
+          title: "Care patterns",
+          average: "Average",
+          today: "Today, from 00:00",
+          last24: "Last 24 hours",
+          records: "Records",
+          feedings: "Feedings",
+          portions: "Portions",
+          total: "Total milk",
+          perFeed: "Average per feed",
+          history: "History",
+          noHistory: "No records in the selected range",
+          print: "Print / Save as PDF",
+        };
+  const formatNumber = (value: unknown, nullValue = "—") => {
+    if (value === null || value === undefined) return nullValue;
+    const number = Number(value);
+    return number < 10 ? number.toFixed(1) : number.toFixed(0);
+  };
+  const formatMilliliters = (value: unknown) => {
+    const formatted = formatNumber(value);
+    return formatted === "—" ? formatted : `${formatted} ml`;
+  };
+  const metricList = (row: Record<string, unknown>, prefix: string) => {
+    const feeding = row.kind === "feeding";
+    const averageAmountKey =
+      prefix === "average"
+        ? "average_amount_ml"
+        : `${prefix}_average_amount_ml`;
+    const metrics = [
+      `<li><span>${words[feeding ? "feedings" : "records"]}</span><strong>${formatNumber(row[`${prefix}_count`])}</strong></li>`,
+    ];
+    if (feeding) {
+      metrics.push(
+        `<li><span>${words.portions}</span><strong>${formatNumber(row[`${prefix}_portion_count`])}</strong></li>`,
+        `<li><span>${words.total}</span><strong>${formatMilliliters(row[`${prefix}_total_amount_ml`])}</strong></li>`,
+        `<li><span>${words.perFeed}</span><strong>${formatMilliliters(row[averageAmountKey])}</strong></li>`,
+      );
+    }
+    return `<ul class="metrics">${metrics.join("")}</ul>`;
+  };
+  const historySections = includeHistory
+    ? report.rows
+        .map((row) => {
+          const history = row.history as Array<Record<string, unknown>>;
+          const rows = history
+            .map((day) => {
+              const date = new Intl.DateTimeFormat(
+                locale === "he" ? "he-IL" : "en-US",
+                { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" },
+              ).format(new Date(`${String(day.date).slice(0, 10)}T12:00:00Z`));
+              const feeding = row.kind === "feeding";
+              return `<tr><th>${escapeHtml(date)}</th><td>${formatNumber(day.count)}</td>${feeding ? `<td>${formatNumber(day.portion_count)}</td><td>${formatMilliliters(day.total_amount_ml)}</td><td>${formatMilliliters(day.average_amount_ml)}</td>` : ""}</tr>`;
+            })
+            .join("");
+          const headings = row.kind === "feeding"
+            ? `<tr><th>${locale === "he" ? "תאריך" : "Date"}</th><th>${words.feedings}</th><th>${words.portions}</th><th>${words.total}</th><th>${words.perFeed}</th></tr>`
+            : `<tr><th>${locale === "he" ? "תאריך" : "Date"}</th><th>${words.records}</th></tr>`;
+          return `<section class="history"><h3>${escapeHtml(row.name)} — ${words.history}</h3><table><thead>${headings}</thead><tbody>${rows || `<tr><td colspan="5">${words.noHistory}</td></tr>`}</tbody></table></section>`;
+        })
+        .join("")
+    : "";
+  const currentPrefix = period === "last_24_hours" ? "last_24_hours" : "calendar_day";
+  const currentLabel = period === "last_24_hours" ? words.last24 : words.today;
+  const summarySections = report.rows
     .map(
       (row) =>
-        `<tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.event_time.toISOString())}</td><td>${escapeHtml(JSON.stringify({ ...row.field_values, ...(row.feeding_portions.length ? { portions: row.feeding_portions } : {}) }))}</td><td>${escapeHtml(row.note)}</td><td>${escapeHtml(row.display_name)}</td></tr>`,
-    )
-    .join("");
-  const reminderRows = reminders.rows
-    .map(
-      (row) =>
-        `<tr><td>${escapeHtml(row.title)}</td><td>${escapeHtml(row.kind === "one_time" ? row.scheduled_for?.toISOString() : `Every ${row.interval_minutes} minutes after activity`)}</td></tr>`,
+        `<section class="activity"><h2>${escapeHtml(row.name)}</h2><h3>${words.average}</h3>${metricList(row, "average")}<h3>${currentLabel}</h3>${metricList(row, currentPrefix)}</section>`,
     )
     .join("");
   response
     .type("html")
     .send(
-      `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(child.rows[0]?.name ?? "Care")} care report</title><style>body{font:14px system-ui;margin:40px;color:#27211d}h1{margin-bottom:2px}p{color:#655d56}table{width:100%;border-collapse:collapse;margin:26px 0}th,td{border-bottom:1px solid #ddd3c8;padding:8px;text-align:left;vertical-align:top}th{background:#f8f2eb}@media print{button{display:none}body{margin:18px}}</style></head><body><button onclick="window.print()">Print / Save as PDF</button><h1>${escapeHtml(child.rows[0]?.name ?? "Child")} care report</h1><p>Generated ${new Date().toLocaleString()}</p><h2>Recorded care</h2><table><thead><tr><th>Activity</th><th>When</th><th>Details</th><th>Note</th><th>Logged by</th></tr></thead><tbody>${logRows || "<tr><td colspan='5'>No records</td></tr>"}</tbody></table><h2>Upcoming care</h2><table><thead><tr><th>Reminder</th><th>Schedule</th></tr></thead><tbody>${reminderRows || "<tr><td colspan='2'>No upcoming reminders</td></tr>"}</tbody></table></body></html>`,
+      `<!doctype html><html dir="${locale === "he" ? "rtl" : "ltr"}"><head><meta charset="utf-8"><title>${escapeHtml(report.rows[0].child_name)} ${words.title}</title><style>body{font:14px system-ui;margin:38px;color:#27211d;background:#fffcf8}h1{margin:0 0 4px;font-size:30px}h2{margin:0;font-size:20px}h3{margin:20px 0 5px;color:#6e655d;font-size:14px}.generated{margin:0;color:#756d65}.activity,.history{break-inside:avoid;margin-top:28px;padding-top:22px;border-top:1px solid #ded7cf}.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:0;padding:0;list-style:none}.metrics li{padding:10px 0;border-bottom:1px solid #e4ddd5}.metrics span{display:block;color:#756d65;font-size:12px}.metrics strong{display:block;margin-top:5px;font-size:18px}table{width:100%;border-collapse:collapse}th,td{padding:9px;text-align:start;border-bottom:1px solid #e2dbd3}thead{background:#f4efe9}@media print{body{margin:16px}.activity,.history{break-inside:avoid}}</style></head><body><h1>${escapeHtml(report.rows[0].child_name)} — ${words.title}</h1><p class="generated">${escapeHtml(new Date().toLocaleString(locale === "he" ? "he-IL" : "en-US"))}</p>${summarySections}${historySections}</body></html>`,
     );
 });
 app.get(

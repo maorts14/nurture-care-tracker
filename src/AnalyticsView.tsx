@@ -29,6 +29,7 @@ type Props = {
     activities: Activity[];
     analytics: ActivityStat[];
     insight_activity_ids: string[] | null;
+    first_record_date: string | null;
   };
   locale: Locale;
   onBack: () => void;
@@ -38,6 +39,13 @@ type Props = {
 
 const pretty = (value: number | null) =>
   value === null ? "—" : value.toFixed(value < 10 ? 1 : 0);
+
+const dateInputValue = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
 
 function MetricsGrid({
   metrics,
@@ -100,6 +108,7 @@ export function AnalyticsView({
     "calendar_day",
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const defaultActivityIds = dashboard.activities
     .filter((activity) => activity.kind === "feeding" || activity.kind === "diaper")
     .map((activity) => activity.id);
@@ -108,6 +117,12 @@ export function AnalyticsView({
   const [settingsActivityIds, setSettingsActivityIds] = useState<string[]>(
     selectedActivityIds,
   );
+  const [exportActivityIds, setExportActivityIds] = useState<string[]>(
+    selectedActivityIds,
+  );
+  const [includeHistory, setIncludeHistory] = useState(false);
+  const [historyStart, setHistoryStart] = useState(() => dateInputValue(new Date()));
+  const [historyEnd, setHistoryEnd] = useState(() => dateInputValue(new Date()));
   const t = (text: string) => tr(locale, text);
   const activityById = new Map(
     dashboard.activities.map((activity) => [activity.id, activity]),
@@ -122,12 +137,54 @@ export function AnalyticsView({
     setSettingsActivityIds(selectedActivityIds);
     setSettingsOpen(true);
   };
+  const openExport = () => {
+    setExportActivityIds(selectedActivityIds);
+    const today = dateInputValue(new Date());
+    setHistoryStart(dashboard.first_record_date ?? today);
+    setHistoryEnd(today);
+    setExportOpen(true);
+  };
   const toggleActivity = (activityId: string) => {
     setSettingsActivityIds((ids) =>
       ids.includes(activityId)
         ? ids.filter((id) => id !== activityId)
         : [...ids, activityId],
     );
+  };
+  const toggleExportActivity = (activityId: string) => {
+    setExportActivityIds((ids) =>
+      ids.includes(activityId)
+        ? ids.filter((id) => id !== activityId)
+        : [...ids, activityId],
+    );
+  };
+  const exportReport = () => {
+    const query = new URLSearchParams({
+      activities: exportActivityIds.join(","),
+      period,
+      history: String(includeHistory),
+      historyStart,
+      historyEnd,
+      locale,
+    });
+    const printFrame = document.createElement("iframe");
+    printFrame.className = "insights-print-frame";
+    printFrame.setAttribute("aria-hidden", "true");
+    printFrame.src = `/api/children/${child.id}/export.report?${query}`;
+    const removeFrame = () => printFrame.remove();
+    printFrame.addEventListener("load", () => {
+      const printWindow = printFrame.contentWindow;
+      if (!printWindow) {
+        removeFrame();
+        return;
+      }
+      printWindow.addEventListener("afterprint", removeFrame, { once: true });
+      printWindow.focus();
+      printWindow.print();
+      window.setTimeout(removeFrame, 60_000);
+    });
+    document.body.append(printFrame);
+    setExportOpen(false);
   };
 
   return (
@@ -168,9 +225,7 @@ export function AnalyticsView({
               className="pdf-export-button"
               aria-label={t("Export PDF")}
               title={t("Export PDF")}
-              onClick={() =>
-                window.open(`/api/children/${child.id}/export.report`, "_blank")
-              }
+              onClick={openExport}
             >
               <FileDown size={17} aria-hidden="true" />
               <span className="pdf-export-label">{t("Export PDF")}</span>
@@ -289,6 +344,90 @@ export function AnalyticsView({
             <div className="modal-actions">
               <button className="submit primary" type="submit">
                 {t("Save changes")}
+              </button>
+            </div>
+          </form>
+        </ModalBackdrop>
+      )}
+      {exportOpen && (
+        <ModalBackdrop onClose={() => setExportOpen(false)}>
+          <form
+            className="log-modal insights-settings-modal insights-export-modal"
+            onSubmit={(event) => {
+              event.preventDefault();
+              exportReport();
+            }}
+          >
+            <div className="insights-settings-heading">
+              <h2>{t("Export insights")}</h2>
+              <button
+                type="button"
+                className="insights-settings-close"
+                aria-label={t("Close")}
+                onClick={() => setExportOpen(false)}
+              >
+                <X size={22} />
+              </button>
+            </div>
+            <p>{t("Choose the visible sections to include in the PDF.")}</p>
+            <fieldset className="insights-activity-options">
+              <legend>{t("Sections")}</legend>
+              {dashboard.activities
+                .filter((activity) => selectedActivityIds.includes(activity.id))
+                .map((activity) => (
+                  <label key={activity.id}>
+                    <input
+                      type="checkbox"
+                      checked={exportActivityIds.includes(activity.id)}
+                      onChange={() => toggleExportActivity(activity.id)}
+                    />
+                    <span
+                      className="analytics-dot"
+                      style={{ background: activity.color }}
+                    />
+                    {t(activity.name)}
+                  </label>
+                ))}
+            </fieldset>
+            <label className="insights-history-toggle">
+              <input
+                type="checkbox"
+                checked={includeHistory}
+                onChange={(event) => setIncludeHistory(event.target.checked)}
+              />
+              {t("Include history")}
+            </label>
+            {includeHistory && (
+              <div className="insights-history-range">
+                <label>
+                  <span>{t("From")}</span>
+                  <input
+                    type="date"
+                    value={historyStart}
+                    max={historyEnd}
+                    onChange={(event) => setHistoryStart(event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>{t("To")}</span>
+                  <input
+                    type="date"
+                    value={historyEnd}
+                    min={historyStart}
+                    max={dateInputValue(new Date())}
+                    onChange={(event) => setHistoryEnd(event.target.value)}
+                  />
+                </label>
+              </div>
+            )}
+            <div className="modal-actions">
+              <button
+                className="submit primary"
+                type="submit"
+                disabled={!exportActivityIds.length}
+              >
+                <FileDown size={17} aria-hidden="true" />
+                {t("Export PDF")}
               </button>
             </div>
           </form>

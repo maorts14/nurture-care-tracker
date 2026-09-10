@@ -106,6 +106,7 @@ type Dashboard = {
   gaps: { starts_at: string; ends_at: string }[];
   analytics: ActivityAnalytics[];
   insight_activity_ids: string[] | null;
+  first_record_date: string | null;
 };
 type Child = { id: string; name: string; timezone: string; role: string };
 type ChildMember = {
