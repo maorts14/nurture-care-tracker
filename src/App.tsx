@@ -413,15 +413,16 @@ export default function App() {
   useEffect(() => {
     document.documentElement.lang = locale;
     document.documentElement.dir = locale === "he" ? "rtl" : "ltr";
-    if (!user) return;
     const token = new URLSearchParams(location.search).get("invite");
-    if (token)
-      api<InvitationPreview>(`/api/invitations/${token}`)
-        .then((preview) => {
-          setInviteToken(token);
-          setInvitePreview(preview);
-        })
-        .catch((cause: Error) => setError(cause.message));
+    if (!token) return;
+    api<InvitationPreview>(`/api/invitations/${token}`)
+      .then((preview) => {
+        setInviteToken(token);
+        setInvitePreview(preview);
+      })
+      .catch((cause: Error) => {
+        if (user) setError(cause.message);
+      });
   }, [user?.id, locale]);
   const clearInvite = () => {
     const url = new URL(location.href);
@@ -755,7 +756,7 @@ export default function App() {
         }),
       },
     );
-    setInviteUrl(`${location.origin}${result.acceptUrl}`);
+    setInviteUrl(result.acceptUrl);
   }
   async function addNote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -894,6 +895,13 @@ export default function App() {
               ? t("Welcome back.")
               : t("Start your family space.")}
           </h1>
+          {invitePreview && (
+            <p className="pending-invitation">
+              {t("You’re invited to join the care space for")} {invitePreview.child_name}.
+              <br />
+              {t("Sign in or create an account to continue.")}
+            </p>
+          )}
           {auth === "register" && (
             <label>
               {t("Name")}
@@ -936,7 +944,12 @@ export default function App() {
               ? t("Need an account? Register")
               : t("Already have an account? Sign in")}
           </button>
-          <a className="google-link" href="/api/auth/google">
+          <a
+            className="google-link"
+            href={`/api/auth/google?returnTo=${encodeURIComponent(
+              `${location.pathname}${location.search}`,
+            )}`}
+          >
             {t("Continue with Google")}
           </a>
           <small>{t("Local sample:")} alex@nurture.local / nurture-demo</small>

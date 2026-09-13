@@ -14,6 +14,8 @@ const hebrew: Record<string, string> = {
   "Need an account? Register": "אין לכם חשבון? הירשמו",
   "Already have an account? Sign in": "כבר יש לכם חשבון? היכנסו",
   "Continue with Google": "המשך עם Google",
+  "You’re invited to join the care space for": "הוזמנתם להצטרף למרחב הטיפול של",
+  "Sign in or create an account to continue.": "היכנסו או צרו חשבון כדי להמשיך.",
   "Local sample:": "דוגמה מקומית:",
   Timeline: "ציר זמן",
   Insights: "תובנות",

@@ -78,6 +78,14 @@ button {
   font-size: 12px;
   margin: 9px 0;
 }
+.pending-invitation {
+  margin: 0 0 18px;
+  padding-inline-start: 12px;
+  border-inline-start: 3px solid #f3654b;
+  color: #625a54;
+  font-size: 14px;
+  line-height: 1.5;
+}
 .home-shell {
   min-height: 100vh;
   background: #fbfaf8;

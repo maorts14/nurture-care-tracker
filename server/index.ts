@@ -134,6 +134,12 @@ app.post("/api/auth/register", async (request, response) => {
 app.get("/api/auth/google", (request, response) => {
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const appUrl = process.env.APP_URL ?? "http://localhost:8080";
+  const returnTo =
+    typeof request.query.returnTo === "string" &&
+    request.query.returnTo.startsWith("/") &&
+    !request.query.returnTo.startsWith("//")
+      ? request.query.returnTo
+      : "/";
   if (!clientId) {
     response.status(503).json({
       error:
@@ -141,7 +147,7 @@ app.get("/api/auth/google", (request, response) => {
     });
     return;
   }
-  const state = jwt.sign({ returnTo: "/" }, secret, { expiresIn: "10m" });
+  const state = jwt.sign({ returnTo }, secret, { expiresIn: "10m" });
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", `${appUrl}/api/auth/google/callback`);
@@ -151,7 +157,7 @@ app.get("/api/auth/google", (request, response) => {
   response.redirect(url.toString());
 });
 app.get("/api/auth/google/callback", async (request, response) => {
-  const { code } = request.query as { code?: string };
+  const { code, state } = request.query as { code?: string; state?: string };
   const appUrl = process.env.APP_URL ?? "http://localhost:8080";
   if (
     !code ||
@@ -160,6 +166,20 @@ app.get("/api/auth/google/callback", async (request, response) => {
   ) {
     response.status(400).send("Google login is not configured");
     return;
+  }
+  let returnTo = "/";
+  if (state) {
+    try {
+      const payload = jwt.verify(state, secret) as { returnTo: string };
+      if (!payload.returnTo.startsWith("/") || payload.returnTo.startsWith("//")) {
+        response.status(400).send("Google sign-in could not be validated");
+        return;
+      }
+      returnTo = payload.returnTo;
+    } catch {
+      response.status(400).send("Google sign-in could not be validated");
+      return;
+    }
   }
   let profile: { email: string; name: string };
   try {
@@ -206,7 +226,7 @@ app.get("/api/auth/google/callback", async (request, response) => {
       maxAge: 2_592_000_000,
     },
   );
-  response.redirect("/");
+  response.redirect(returnTo);
 });
 
 app.get("/api/me", async (request, response) => {
@@ -970,12 +990,14 @@ app.post("/api/children/:childId/invitations", async (request, response) => {
   );
   response.status(201).json({
     token: invite.rows[0].token,
-    acceptUrl: `/?invite=${invite.rows[0].token}`,
+    acceptUrl: new URL(
+      `/?invite=${invite.rows[0].token}`,
+      process.env.APP_URL ?? "http://localhost:5173",
+    ).toString(),
   });
 });
 app.get("/api/invitations/:token", async (request, response) => {
-  const session = requireSession(request, response);
-  if (!session) return;
+  const session = sessionFrom(request);
   const { token } = request.params;
   const invite = await pool.query<{
     child_name: string;
@@ -983,8 +1005,8 @@ app.get("/api/invitations/:token", async (request, response) => {
     created_at: string;
     role: "caregiver" | "viewer";
   }>(
-    `SELECT child.name AS child_name, inviter.display_name AS invited_by_name, invitation.created_at, invitation.role FROM child_invitation AS invitation JOIN child ON child.id = invitation.child_id JOIN app_user AS inviter ON inviter.id = invitation.invited_by JOIN app_user AS recipient ON recipient.id = $2 WHERE invitation.token = $1 AND invitation.accepted_at IS NULL AND invitation.expires_at > now() AND (invitation.email IS NULL OR lower(invitation.email) = lower(recipient.email))`,
-    [token, session.userId],
+    `SELECT child.name AS child_name, inviter.display_name AS invited_by_name, invitation.created_at, invitation.role FROM child_invitation AS invitation JOIN child ON child.id = invitation.child_id JOIN app_user AS inviter ON inviter.id = invitation.invited_by LEFT JOIN app_user AS recipient ON recipient.id = $2 WHERE invitation.token = $1 AND invitation.accepted_at IS NULL AND invitation.expires_at > now() AND (invitation.email IS NULL OR lower(invitation.email) = lower(recipient.email))`,
+    [token, session?.userId ?? null],
   );
   if (invite.rowCount !== 1) {
     response.status(404).json({ error: "This invitation is not available" });
