@@ -1,7 +1,7 @@
 export type Locale = "en" | "he";
 
 const hebrew: Record<string, string> = {
-  "Loading Nurture…": "טוען את Nurture…",
+  "Loading Feedme…": "טוען את Feedme…",
   "Loading family space…": "טוען את המרחב המשפחתי…",
   "SHARED CHILD CARE": "טיפול משותף בילד",
   "Welcome back.": "טוב שחזרת.",

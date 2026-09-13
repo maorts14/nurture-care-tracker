@@ -8,7 +8,7 @@ import { CreateChildModal } from "./components/CreateChildModal";
 import { LanguageControl } from "./components/LanguageControl";
 import { LanguagePicker } from "./components/LanguagePicker";
 import { ModalBackdrop } from "./components/ModalBackdrop";
-import { NurtureBrand } from "./components/NurtureBrand";
+import { FeedmeBrand } from "./components/FeedmeBrand";
 import { ReminderScheduleFields } from "./components/ReminderScheduleFields";
 import { SidebarAccount } from "./components/SidebarAccount";
 import { TimezoneSelect } from "./components/TimezoneSelect";
@@ -882,12 +882,12 @@ export default function App() {
     navigate("/", true);
   };
   if (loading)
-    return <div className="loading-screen">{t("Loading Nurture…")}</div>;
+    return <div className="loading-screen">{t("Loading Feedme…")}</div>;
   if (!user)
     return (
       <div className="sign-in-shell">
         <form className="sign-in" onSubmit={login}>
-          <NurtureBrand />
+          <FeedmeBrand />
           <p className="eyebrow">{t("SHARED CHILD CARE")}</p>
           <h1>
             {auth === "sign-in"
@@ -1039,7 +1039,7 @@ export default function App() {
         onClick={() => setMobileSidebarOpen(false)}
       />
       <aside className="sidebar">
-        <NurtureBrand onClick={() => navigate("/children")} />
+        <FeedmeBrand onClick={() => navigate("/children")} />
         <label className="child-switch">
           <span className="avatar">{child.name[0]}</span>
           <span>
@@ -2031,7 +2031,7 @@ function HomeSidebar({
         onClick={close}
       />
       <aside className={`home-sidebar ${open ? "open" : ""}`}>
-        <NurtureBrand onClick={onHome} />
+        <FeedmeBrand onClick={onHome} />
         <div className="sidebar-bottom">
           <LanguageControl
             locale={user.locale}

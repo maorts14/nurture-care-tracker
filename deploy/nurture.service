@@ -1,5 +1,5 @@
 [Unit]
-Description=Nurture care tracker Docker stack
+Description=Feedme care tracker Docker stack
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target

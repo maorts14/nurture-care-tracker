@@ -1,13 +1,13 @@
-type NurtureBrandProps = {
+type FeedmeBrandProps = {
   className?: string;
   onClick?: () => void;
 };
 
-export function NurtureBrand({ className = "", onClick }: NurtureBrandProps) {
+export function FeedmeBrand({ className = "", onClick }: FeedmeBrandProps) {
   const content = (
     <>
-      <span className="brand-mark">n</span>
-      <span>Nurture</span>
+      <span className="brand-mark">f</span>
+      <span>Feedme</span>
     </>
   );
   if (onClick) {
@@ -21,9 +21,5 @@ export function NurtureBrand({ className = "", onClick }: NurtureBrandProps) {
       </button>
     );
   }
-  return (
-    <div className={["brand", className].filter(Boolean).join(" ")}>
-      {content}
-    </div>
-  );
+  return <div className={["brand", className].filter(Boolean).join(" ")}>{content}</div>;
 }

@@ -1709,4 +1709,4 @@ io.on("connection", (socket) => {
     if (access.rowCount === 1) socket.join(childRoom(childId));
   });
 });
-httpServer.listen(port, () => console.log(`Nurture API listening on ${port}`));
+httpServer.listen(port, () => console.log(`Feedme API listening on ${port}`));

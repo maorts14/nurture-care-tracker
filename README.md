@@ -1,4 +1,4 @@
-# Nurture
+# Feedme
 
 Shared child-care tracking with a persistent PostgreSQL timeline, real-time updates, and passive in-app reminders.
 
@@ -17,7 +17,7 @@ Seeded local accounts:
 
 The API is exposed at `http://localhost:3001`, PostgreSQL at `localhost:5432`, and the Node inspector at `localhost:9229` for local development. Stop the local stack with `docker compose down`. Add `-v` only when you intentionally want to erase the local database volume and rerun the seed data.
 
-In VS Code, run **Tasks: Run Task → App: start development**. For breakpoints, choose **Run and Debug → Debug Nurture locally**. The saved configuration starts the local development containers, attaches the API debugger, and opens the Vite app. Production uses `docker-compose.prod.yml`, which has no watch mode or exposed debugger.
+In VS Code, run **Tasks: Run Task → App: start development**. For breakpoints, choose **Run and Debug → Debug Feedme locally**. The saved configuration starts the local development containers, attaches the API debugger, and opens the Vite app. Production uses `docker-compose.prod.yml`, which has no watch mode or exposed debugger.
 
 ## What is working
 
@@ -94,7 +94,7 @@ This is a small `systemd` unit, Ubuntu's service manager. It does not run the No
 docker compose --env-file .env -f docker-compose.prod.yml up -d --build --remove-orphans
 ```
 
-`up -d` creates or starts the required containers in the background. `--build` ensures the image matches the checked-out code. `--remove-orphans` removes containers from an older Compose definition that no longer belong to Nurture. `RemainAfterExit=yes` records that the desired stack was started even though the command itself finishes quickly.
+`up -d` creates or starts the required containers in the background. `--build` ensures the image matches the checked-out code. `--remove-orphans` removes containers from an older Compose definition that no longer belong to Feedme. `RemainAfterExit=yes` records that the desired stack was started even though the command itself finishes quickly.
 
 This gives two layers of recovery: Docker handles an individual container crash; systemd starts the desired Compose stack when the whole VPS reboots. Useful commands are:
 
@@ -171,7 +171,7 @@ sudo ufw allow 443/tcp
 sudo ufw enable
 ```
 
-### 3. Install and configure Nurture
+### 3. Install and configure Feedme
 
 ```sh
 sudo git clone https://github.com/maorts14/nurture-care-tracker.git /opt/nurture
