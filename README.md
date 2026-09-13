@@ -44,19 +44,19 @@ For local development, use `http://localhost:5173/api/auth/google/callback` and 
 
 ## OVH VPS deployment
 
-The production stack is designed for the OVH VPS currently used for this project: Ubuntu 25.04, 6 vCores, 12 GB RAM, and 100 GB storage. It uses one Docker Compose stack:
+Feedme is deployed on an OVH VPS running Ubuntu 24.04. Production is a small, self-contained Docker Compose stack. The VPS does not clone the source repository or build the app: it pulls versioned, private images from GitHub Container Registry (GHCR).
 
 - Caddy is the only public service, on ports 80 and 443. It obtains and renews the TLS certificate automatically.
 - The React app, Express API, and PostgreSQL are private Docker services; PostgreSQL and port 3001 are never published to the internet.
 - Each service uses `restart: unless-stopped`. The systemd unit makes the stack start after Docker on a VPS reboot.
 - The production database starts empty. It deliberately does **not** load the local demo seed.
-- OVH automated backups are already enabled. A daily compressed SQL dump provides a second, app-level recovery path.
+- OVH automated backups are the server-level recovery option. A daily compressed SQL dump provides a second, app-level recovery path.
 
 ### How the production system works
 
 ```text
 Browser
-  │ https://care.example.com (80 redirects to HTTPS; 443 serves the app)
+  │ https://feedme-baby.com (80 redirects to HTTPS; 443 serves the app)
   ▼
 Caddy ── private Docker network ──► Nginx / React web container
                                          │ /api and /socket.io
@@ -70,11 +70,11 @@ All four containers are in the same private Docker network. Only Caddy has host 
 
 This is deliberately separate from `docker-compose.yml`, which is the hot-reloading local development stack. The production file does **not** mount `server/seed.sql`, so a new VPS database has no sample people, children, or activity logs.
 
-`db` is the PostgreSQL container. Its data lives in the Docker named volume `nurture_data`, outside the short-lived container filesystem. Rebuilding or replacing the `db` container therefore does not erase real data. `server/schema.sql` is mounted only for PostgreSQL's first initialization of a completely empty volume. Later application schema changes are handled by the API's migration runner.
+`db` is an otherwise standard PostgreSQL 16 container. The custom database image only bundles `server/schema.sql` as PostgreSQL's first-run initialization file, so the VPS can start an empty database without a source checkout. It contains no real data. Real data lives in the Docker named volume `nurture_data`, outside the short-lived container filesystem. Replacing the database image does not erase that volume. Later schema changes are handled by the API migration runner.
 
 `api` is the Express and Socket.IO server. It waits for PostgreSQL's health check before starting. On startup, it runs any unapplied SQL migrations and then serves the application. Its `/api/health` endpoint returns `{"status":"ok"}` only after a real `SELECT 1` succeeds against PostgreSQL; Docker uses this endpoint to identify an unhealthy API.
 
-`web` is Nginx serving the built React files. Nginx also forwards `/api/*` and `/socket.io/*` to `api:3001` inside Docker. That means the browser sees one origin (`https://care.example.com`), which keeps cookies and real-time Socket.IO connections simple.
+`web` is Nginx serving the built React files. Nginx also forwards `/api/*` and `/socket.io/*` to `api:3001` inside Docker. That means the browser sees one origin (`https://feedme-baby.com`), which keeps cookies and real-time Socket.IO connections simple.
 
 `caddy` is the public edge. It is the only service with `80:80` and `443:443` published to the VPS. Once `APP_DOMAIN` resolves publicly to the VPS and those ports are reachable, Caddy obtains a TLS certificate automatically, redirects HTTP to HTTPS, and renews the certificate before expiry. Its `caddy_data` volume preserves certificate/account data across container replacement; do not delete that volume casually.
 
@@ -91,10 +91,10 @@ There is no manual certificate renewal task. The DNS record and open ports are t
 This is a small `systemd` unit, Ubuntu's service manager. It does not run the Node application itself. Instead, once Docker is ready during a VPS boot, it runs:
 
 ```sh
-docker compose --env-file .env -f docker-compose.prod.yml up -d --build --remove-orphans
+docker compose --env-file .env -f docker-compose.prod.yml up -d --pull always --remove-orphans
 ```
 
-`up -d` creates or starts the required containers in the background. `--build` ensures the image matches the checked-out code. `--remove-orphans` removes containers from an older Compose definition that no longer belong to Feedme. `RemainAfterExit=yes` records that the desired stack was started even though the command itself finishes quickly.
+`up -d` creates or starts the required containers in the background. `--pull always` checks GHCR for the chosen image versions; it does not build on the VPS. `--remove-orphans` removes containers from an older Compose definition that no longer belong to Feedme. `RemainAfterExit=yes` records that the desired stack was started even though the command itself finishes quickly.
 
 This gives two layers of recovery: Docker handles an individual container crash; systemd starts the desired Compose stack when the whole VPS reboots. Useful commands are:
 
@@ -115,9 +115,9 @@ This is a **logical** backup: it can be restored into PostgreSQL even when resto
 
 #### `scripts/deploy.sh` — safe application updates
 
-This script first runs `git pull --ff-only`. “Fast-forward only” refuses to merge unexpected server-side edits, rather than silently creating a merge commit. It then runs Compose with `--build --remove-orphans`, rebuilding only images whose inputs changed and preserving the PostgreSQL and Caddy volumes. Finally it prints the container status.
+This script runs `docker compose pull`, then starts the chosen images with `--remove-orphans`, preserving PostgreSQL and Caddy volumes. There is no source checkout or build on the VPS. To release a new version, publish new images, change the three image tags in the VPS `.env`, then run this script. Finally it prints the container status.
 
-The API migration runner applies new SQL migration files once and records them in `schema_migration`, so a normal deploy updates code and database structure together. A deploy does not deliberately wipe data or seed demo data. It is not a zero-downtime deployment: the API/web container may restart briefly. If a bad release is deployed, revert the Git commit, then run `./scripts/deploy.sh` again. Database migrations should therefore be designed to remain compatible with a rollback.
+The API migration runner applies new SQL migration files once and records them in `schema_migration`. A release does not deliberately wipe data or load demo data. Database migrations should remain compatible with a rollback.
 
 #### Secrets and boundaries
 
@@ -127,13 +127,13 @@ This is a robust single-VPS deployment, not high availability: if OVH's entire r
 
 ### 1. Prepare DNS and Google OAuth
 
-Choose a domain or subdomain, for example `care.example.com`, and create an **A record** pointing it to the VPS IPv4 address. Wait until `dig +short care.example.com` returns that address. Caddy cannot issue an HTTPS certificate until DNS resolves publicly and ports 80/443 reach the VPS.
+Create an **A record** pointing the domain to the VPS IPv4 address. Feedme currently uses `feedme-baby.com` → `148.113.44.137`. Caddy cannot issue an HTTPS certificate until DNS resolves publicly and ports 80/443 reach the VPS.
 
 If Google sign-in is enabled, add these exact entries in the existing Google OAuth client:
 
 ```text
-Authorized JavaScript origin: https://care.example.com
-Authorized redirect URI: https://care.example.com/api/auth/google/callback
+Authorized JavaScript origin: https://feedme-baby.com
+Authorized redirect URI: https://feedme-baby.com/api/auth/google/callback
 ```
 
 ### 2. First-time VPS preparation
@@ -173,22 +173,22 @@ sudo ufw enable
 
 ### 3. Install and configure Feedme
 
-```sh
-sudo git clone https://github.com/maorts14/nurture-care-tracker.git /opt/nurture
-sudo chown -R "$USER":"$USER" /opt/nurture
-cd /opt/nurture
-cp .env.production.example .env
-openssl rand -base64 48
-```
+Copy only the runtime files to `/opt/nurture`: `docker-compose.prod.yml`, `Caddyfile`, `deploy/nurture.service`, and the two scripts. Create `/opt/nurture/.env` from `.env.production.example`, set its permissions to `600`, and fill in the domain, database credentials, JWT secret, image tags, and Google OAuth values. Do not commit or upload this file.
 
-Edit `/opt/nurture/.env`. Set `APP_DOMAIN`, paste the generated value into `JWT_SECRET`, choose a unique database password, and add the Google client values if using Google sign-in. Keep this file only on the VPS; it is ignored by Git and Docker build contexts.
+Because the GHCR images are private, the VPS needs its own GitHub Personal Access Token with **only** `read:packages`. Log it in for both `ubuntu` and root (the systemd service uses root's Docker context):
+
+```sh
+printf '%s' "$GHCR_READ_TOKEN" | docker login ghcr.io -u maorts14 --password-stdin
+printf '%s' "$GHCR_READ_TOKEN" | sudo docker login ghcr.io -u maorts14 --password-stdin
+```
 
 Start and verify the stack:
 
 ```sh
-docker compose --env-file .env -f docker-compose.prod.yml up -d --build
+cd /opt/nurture
+sudo systemctl start nurture
 docker compose --env-file .env -f docker-compose.prod.yml ps
-curl -fsS https://care.example.com/api/health
+curl -fsS https://feedme-baby.com/api/health
 ```
 
 The health endpoint returns `{"status":"ok"}` only when Express can reach PostgreSQL.
@@ -223,13 +223,21 @@ Add this line to run a backup daily at 03:15 UTC and retain 14 days of dumps:
 
 To restore a dump, stop the API and web services, then pipe the chosen dump into the `db` service. Practice this only against a non-production copy first.
 
-### Updating the deployed app
+### Publishing and updating the deployed app
+
+On the development computer, build and publish a versioned release to GHCR:
+
+```sh
+./scripts/publish-images.ps1 -Version 1.0.1
+```
+
+Then, on the VPS, update the three `FEEDME_*_IMAGE` tag values in `/opt/nurture/.env` to `1.0.1` and run:
 
 ```sh
 cd /opt/nurture
 ./scripts/deploy.sh
 ```
 
-This fast-forwards the checked-out `main` branch, rebuilds changed containers, runs SQL migrations during the API start, and leaves the database volume intact.
+The API migration runner applies new SQL migrations once and records them in `schema_migration`, so a normal release updates code and database structure together. A release does not deliberately wipe data or load demo data. It is not zero-downtime: the API and web container may restart briefly. To roll back application code, switch the three tags back to the prior release and run the deploy script again. Database migrations must therefore remain compatible with a rollback.
 
 The current app intentionally does not support offline operation or external email delivery; invitations are shareable links that must be accepted by the invited email address.
