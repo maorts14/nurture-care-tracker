@@ -119,6 +119,16 @@ This script runs `docker compose pull`, then starts the chosen images with `--re
 
 The API migration runner applies new SQL migration files once and records them in `schema_migration`. A release does not deliberately wipe data or load demo data. Database migrations should remain compatible with a rollback.
 
+#### Database-changing releases
+
+For an existing production database, add a new, monotonically named SQL file such as `server/migrations/002_add_activity_location.sql`. Never edit a migration that may already have been released: its filename is recorded in `schema_migration`, so it will not run again. The migration runner wraps each new file in a transaction; do not add `BEGIN` or `COMMIT` inside the migration file.
+
+Also update `server/schema.sql` to the same final schema. That file is only for a completely new PostgreSQL volume; existing Feedme databases are changed only by migrations. `scripts/publish-images.ps1` builds both the API image (which runs migrations) and the database image (which carries the clean-install schema), so publish all three images for every release.
+
+Before a database-changing production release, run a manual backup with `./scripts/backup-database.sh`. Publish the version, update the three image tags in `.env`, deploy normally, then check the API logs and the `schema_migration` table. If a migration fails, the transaction is rolled back and the API does not become healthy. Fix the migration and publish a corrected image before retrying. If it already succeeded, do not merely roll application code back when the migration removed or changed old data; prefer a forward-fix release.
+
+Use the expand/migrate/contract pattern for risky changes: first add compatible columns or tables, then switch application reads and writes, and only remove old columns in a later release. This keeps the prior application version usable during a rollback.
+
 #### Secrets and boundaries
 
 The VPS `.env` contains the JWT secret, database password, and optionally Google OAuth secret. It must never be committed or copied into a container image. `.gitignore` prevents Git from tracking it, and `.dockerignore` keeps it out of Docker build context. `.env.production.example` is safe to commit because it contains placeholders only.
