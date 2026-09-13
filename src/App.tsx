@@ -26,6 +26,7 @@ import {
   Menu,
   MessageCircle,
   MoreHorizontal,
+  Pencil,
   Plus,
   Settings2,
   Sparkles,
@@ -233,6 +234,7 @@ function eventDetail(
 }
 
 export default function App() {
+  const localSample = !import.meta.env.PROD;
   const [user, setUser] = useState<User | null>(null);
   const [children, setChildren] = useState<Child[]>([]);
   const [members, setMembers] = useState<ChildMember[]>([]);
@@ -241,8 +243,12 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [auth, setAuth] = useState<"sign-in" | "register">("sign-in");
-  const [email, setEmail] = useState("alex@nurture.local");
-  const [password, setPassword] = useState("nurture-demo");
+  const [email, setEmail] = useState(
+    localSample ? "alex@nurture.local" : "",
+  );
+  const [password, setPassword] = useState(
+    localSample ? "nurture-demo" : "",
+  );
   const [name, setName] = useState("");
   const [routePath, setRoutePath] = useState(() => location.pathname || "/");
   const [panel, setPanel] = useState<Panel>(null);
@@ -468,6 +474,17 @@ export default function App() {
   }, [panel]);
   useEffect(() => {
     if (!current) return;
+    if (editingLog?.activity_id === current.id) {
+      setValues(editingLog.field_values);
+      setFeedingPortions(
+        editingLog.feeding_portions.map((portion) => ({
+          kind: portion.kind,
+          deliveryMethod: portion.delivery_method,
+          amountMl: String(portion.amount_ml),
+        })),
+      );
+      return;
+    }
     const defaults: Record<string, unknown> = {};
     current.fields.forEach((field) => {
       defaults[field.field_key] =
@@ -478,7 +495,7 @@ export default function App() {
             : "";
     });
     setValues(defaults);
-  }, [current?.id]);
+  }, [current?.id, editingLog?.id]);
   async function login(event: FormEvent) {
     event.preventDefault();
     try {
@@ -844,21 +861,13 @@ export default function App() {
     });
     await loadMembers(child.id);
   }
-  function editLog() {
-    if (!selected || !child) return;
-    setActivityId(selected.activity_id);
-    setAt(localDateTime(selected.event_time));
-    setValues(selected.field_values);
-    setFeedingPortions(
-      selected.feeding_portions.map((portion) => ({
-        kind: portion.kind,
-        deliveryMethod: portion.delivery_method,
-        amountMl: String(portion.amount_ml),
-      })),
-    );
-    setNote(selected.note ?? "");
+  function editLog(log: Event) {
+    if (!child) return;
+    setActivityId(log.activity_id);
+    setAt(localDateTime(log.event_time));
+    setNote(log.note ?? "");
     setSelected(null);
-    setEditingLog(selected);
+    setEditingLog(log);
     setLogOpen(true);
   }
   const setLocale = async (locale: User["locale"]) => {
@@ -952,7 +961,11 @@ export default function App() {
           >
             {t("Continue with Google")}
           </a>
-          <small>{t("Local sample:")} alex@nurture.local / nurture-demo</small>
+          <small>
+            {localSample
+              ? `${t("Local sample:")} alex@nurture.local / nurture-demo`
+              : t("Use your account details, or create an account to get started.")}
+          </small>
         </form>
       </div>
     );
@@ -1038,7 +1051,7 @@ export default function App() {
         onCreate={addComment}
         onEdit={editComment}
         onDeleteComment={deleteComment}
-        onEditLog={editLog}
+        onEditLog={() => editLog(selected!)}
         onDeleteLog={deleteLog}
       />
     );
@@ -1311,15 +1324,32 @@ export default function App() {
                         </div>
                       )}
                     </div>
-                    <button
-                      className="more"
-                      onClick={(clickEvent) => {
-                        clickEvent.stopPropagation();
-                        openComments(event);
-                      }}
-                    >
-                      <MessageCircle size={17} />
-                    </button>
+                    <div className="event-actions">
+                      {(owner || event.created_by_id === user.id) && (
+                        <button
+                          className="more"
+                          aria-label={`${t("Edit")} ${t(event.activity_name)}`}
+                          title={t("Edit")}
+                          onClick={(clickEvent) => {
+                            clickEvent.stopPropagation();
+                            editLog(event);
+                          }}
+                        >
+                          <Pencil size={16} />
+                        </button>
+                      )}
+                      <button
+                        className="more"
+                        aria-label={`${t("Comment")} ${t(event.activity_name)}`}
+                        title={t("Comment")}
+                        onClick={(clickEvent) => {
+                          clickEvent.stopPropagation();
+                          openComments(event);
+                        }}
+                      >
+                        <MessageCircle size={17} />
+                      </button>
+                    </div>
                   </article>
                 </Fragment>
               );

@@ -17,6 +17,8 @@ const hebrew: Record<string, string> = {
   "You’re invited to join the care space for": "הוזמנתם להצטרף למרחב הטיפול של",
   "Sign in or create an account to continue.": "היכנסו או צרו חשבון כדי להמשיך.",
   "Local sample:": "דוגמה מקומית:",
+  "Use your account details, or create an account to get started.":
+    "היכנסו עם פרטי החשבון שלכם, או צרו חשבון כדי להתחיל.",
   Timeline: "ציר זמן",
   Insights: "תובנות",
   "Insights settings": "הגדרות תובנות",

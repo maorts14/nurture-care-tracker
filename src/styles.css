@@ -692,7 +692,7 @@ nav em {
 .event {
   min-height: 83px;
   display: grid;
-  grid-template-columns: 62px 46px 1fr 25px;
+  grid-template-columns: 62px 46px 1fr auto;
   position: relative;
 }
 .event-open-detail {
@@ -860,6 +860,17 @@ nav em {
   color: #928b83;
   padding: 4px;
   height: max-content;
+}
+.event-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 1px;
+}
+.event-actions .more {
+  display: grid;
+  place-items: center;
+  min-width: 25px;
+  min-height: 25px;
 }
 .upcoming {
   background: #f4f1ec;
@@ -1448,7 +1459,7 @@ nav em {
     min-width: 138px;
   }
   .event {
-    grid-template-columns: 50px 40px 1fr 20px;
+    grid-template-columns: 50px 40px 1fr auto;
   }
   .event-title {
     display: block;
