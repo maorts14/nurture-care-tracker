@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: ${FEEDME_DB_IMAGE:?FEEDME_DB_IMAGE must be set}
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set}
@@ -8,7 +8,6 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     volumes:
       - nurture_data:/var/lib/postgresql/data
-      - ./server/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 10s
@@ -16,9 +15,7 @@ services:
       retries: 10
 
   api:
-    build:
-      context: .
-      dockerfile: server/Dockerfile
+    image: ${FEEDME_API_IMAGE:?FEEDME_API_IMAGE must be set}
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -38,9 +35,7 @@ services:
       retries: 6
 
   web:
-    build:
-      context: .
-      dockerfile: web.Dockerfile
+    image: ${FEEDME_WEB_IMAGE:?FEEDME_WEB_IMAGE must be set}
     restart: unless-stopped
     depends_on:
       api:
