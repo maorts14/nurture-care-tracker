@@ -253,7 +253,14 @@ For a local emergency or development-computer publish, supply an explicit versio
 ./scripts/publish-images.ps1 -Version 1.0.1
 ```
 
-For the normal automatic-update channel, set the three `FEEDME_*_IMAGE` values in `/opt/nurture/.env` to `:latest` once. Future releases then require only:
+For the normal automatic-update channel, set the three `FEEDME_*_IMAGE` values in `/opt/nurture/.env` to `:latest` once. The release workflow then deploys automatically after all three images publish successfully. It uses a dedicated VPS SSH key stored only in GitHub Actions secrets and waits for the public health endpoint to respond.
+
+The repository must have these GitHub Actions secrets before automatic deployment can run:
+
+- `VPS_SSH_PRIVATE_KEY`: the dedicated deployment key's private half.
+- `VPS_SSH_KNOWN_HOSTS`: the pinned `known_hosts` line for the VPS.
+
+The workflow serializes releases, so an older tag cannot finish after a newer tag and overwrite `latest`. If an automatic deployment fails, the published images remain available and the VPS keeps its previously running containers. You can rerun that job after correcting the problem, or deploy manually:
 
 ```sh
 cd /opt/nurture
@@ -262,6 +269,6 @@ cd /opt/nurture
 
 The API migration runner applies new SQL migrations once and records them in `schema_migration`, so a normal release updates code and database structure together. A release does not deliberately wipe data or load demo data. It is not zero-downtime: the API and web container may restart briefly. To roll back application code, change all three image values to the same prior version, such as `:1.0.0`, and run the deploy script again. Database migrations must therefore remain compatible with a rollback.
 
-The VPS deployment remains a manual, explicit step. Do not add its SSH key, GHCR read token, OAuth credentials, database credentials, JWT secret, or `/opt/nurture/.env` to this repository or to GitHub Actions. If automatic deployment is wanted later, create separate deployment credentials and an environment with required approval; keep publishing and deployment as distinct stages.
+Do not add the VPS GHCR read token, OAuth credentials, database credentials, JWT secret, or `/opt/nurture/.env` to this repository or GitHub Actions. The deployment SSH key is intentionally separate from personal keys and is limited to the `ubuntu` account on this VPS.
 
 The current app intentionally does not support offline operation or external email delivery; invitations are shareable links that must be accepted by the invited email address.
