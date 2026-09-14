@@ -554,16 +554,25 @@ nav em {
   display: none;
 }
 .summary-strip {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
   gap: 18px;
   margin: 44px 0 46px;
   padding-bottom: 25px;
   border-bottom: 1px solid #e9e4dd;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: inline mandatory;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.summary-strip::-webkit-scrollbar {
+  display: none;
 }
 .summary-strip > div {
+  flex: 0 0 180px;
   border-left: 2px solid #ded8ce;
   padding-left: 13px;
+  scroll-snap-align: start;
 }
 .summary-strip > div:first-child {
   border-color: #f3654b;
@@ -692,8 +701,41 @@ nav em {
   gap: 2px;
 }
 .timeline-list {
-  margin-top: 20px;
+  margin-top: 8px;
   touch-action: pan-y;
+  overflow: hidden;
+}
+.timeline-list-content.from-left {
+  animation: timeline-slide-in-from-left 320ms cubic-bezier(0.22, 0.8, 0.3, 1);
+}
+.timeline-list-content.from-right {
+  animation: timeline-slide-in-from-right 320ms cubic-bezier(0.22, 0.8, 0.3, 1);
+}
+@keyframes timeline-slide-in-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes timeline-slide-in-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .timeline-list-content.from-left,
+  .timeline-list-content.from-right {
+    animation: none;
+  }
 }
 .timeline-filter-carousel {
   display: flex;
@@ -1022,12 +1064,17 @@ nav em {
   transform: translateY(-10px);
 }
 .check {
+  display: inline-grid;
+  place-items: center;
   height: 21px;
   width: 21px;
-  border: 1px solid #d5cec5;
+  padding: 0;
+  border: 1px solid #b9dfc7;
   border-radius: 50%;
-  color: #aaa198;
+  background: #f2fbf5;
+  color: #2f9d60;
   font-size: 12px;
+  line-height: 1;
 }
 .due-actions {
   display: inline-flex;
@@ -1543,7 +1590,7 @@ nav em {
     overflow-x: auto;
   }
   .summary-strip > div {
-    min-width: 138px;
+    flex-basis: 138px;
   }
   .event {
     grid-template-columns: 50px 40px 1fr auto;
@@ -2410,12 +2457,13 @@ nav em {
     padding: 10px 12px;
   }
   .summary-strip {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    display: flex;
     gap: 8px;
-    overflow: visible;
+    overflow-x: auto;
     padding-bottom: 18px;
   }
   .summary-strip > div {
+    flex: 0 0 calc((100% - 16px) / 3 - 8px);
     min-width: 0;
     padding-left: 8px;
   }

@@ -264,6 +264,10 @@ export default function App() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
   const [timelineActivityId, setTimelineActivityId] = useState<string | null>(null);
+  const [timelineSlideDirection, setTimelineSlideDirection] = useState<
+    "from-left" | "from-right" | null
+  >(null);
+  const [timelineSlideKey, setTimelineSlideKey] = useState(0);
   const timelineSwipeStart = useRef<{ x: number; y: number } | null>(null);
   const timelineSwipeDetected = useRef(false);
   const [activityId, setActivityId] = useState("");
@@ -301,6 +305,24 @@ export default function App() {
   const timelineEvents = timelineActivityId
     ? events.filter((event) => event.activity_id === timelineActivityId)
     : events;
+  const switchTimelineActivity = (nextActivityId: string | null) => {
+    if (nextActivityId === timelineActivityId) return;
+
+    const currentIndex = Math.max(
+      0,
+      timelineActivityIds.indexOf(timelineActivityId),
+    );
+    const nextIndex = Math.max(0, timelineActivityIds.indexOf(nextActivityId));
+    const movesTowardLaterTab = nextIndex > currentIndex;
+    const slideFrom =
+      movesTowardLaterTab === (locale === "he")
+        ? "from-left"
+        : "from-right";
+
+    setTimelineSlideDirection(slideFrom);
+    setTimelineSlideKey((key) => key + 1);
+    setTimelineActivityId(nextActivityId);
+  };
   const childTimeZone = child?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const dayKeyFormatter = useMemo(
     () =>
@@ -341,6 +363,8 @@ export default function App() {
   const todayEvents = events.filter(
     (event) => localDayKey(event.event_time) === todayDayKey,
   );
+  const todayFeedings = todayEvents.filter((event) => event.kind === "feeding");
+  const todayDiapers = todayEvents.filter((event) => event.kind === "diaper");
   const feed = events.filter((event) => event.kind === "feeding");
   const current = dash?.activities.find((item) => item.id === activityId);
   const lastFeed = feed[0];
@@ -1272,6 +1296,18 @@ export default function App() {
               {todayEvents.length} {t("records")}
             </strong>
           </div>
+          <div>
+            <p>{t("Feedings today")}</p>
+            <strong>
+              {todayFeedings.length} {t("records")}
+            </strong>
+          </div>
+          <div>
+            <p>{t("Diapers today")}</p>
+            <strong>
+              {todayDiapers.length} {t("records")}
+            </strong>
+          </div>
         </section>
         <UpcomingList
           reminders={dash.reminders}
@@ -1309,7 +1345,7 @@ export default function App() {
               className={`timeline-filter-tab ${timelineActivityId === null ? "active" : ""}`}
               role="tab"
               aria-selected={timelineActivityId === null}
-              onClick={() => setTimelineActivityId(null)}
+              onClick={() => switchTimelineActivity(null)}
             >
               {t("All")}
             </button>
@@ -1319,7 +1355,7 @@ export default function App() {
                 key={activity.id}
                 role="tab"
                 aria-selected={timelineActivityId === activity.id}
-                onClick={() => setTimelineActivityId(activity.id)}
+                onClick={() => switchTimelineActivity(activity.id)}
               >
                 {t(activity.name)}
               </button>
@@ -1349,7 +1385,7 @@ export default function App() {
                 timelineActivityIds.indexOf(timelineActivityId),
               );
               const direction =
-                user.locale === "he"
+                locale === "he"
                   ? horizontalDistance < 0
                     ? -1
                     : 1
@@ -1363,23 +1399,27 @@ export default function App() {
               window.setTimeout(() => {
                 timelineSwipeDetected.current = false;
               }, 250);
-              setTimelineActivityId(timelineActivityIds[nextIndex]);
+              switchTimelineActivity(timelineActivityIds[nextIndex]);
             }}
           >
-            {timelineEvents.map((event, index) => {
-              const dayKey = localDayKey(event.event_time);
-              const startsNewDay =
-                index === 0 ||
-                localDayKey(timelineEvents[index - 1].event_time) !== dayKey;
-              const commentAuthor = event.first_comment_author?.trim().split(/\s+/)[0];
-              const feedingTotal =
-                event.kind === "feeding"
-                  ? event.feeding_portions.reduce(
-                      (total, portion) => total + portion.amount_ml,
-                      0,
-                    )
-                  : null;
-              return (
+            <div
+              key={timelineSlideKey}
+              className={`timeline-list-content ${timelineSlideDirection ?? ""}`}
+            >
+              {timelineEvents.map((event, index) => {
+                const dayKey = localDayKey(event.event_time);
+                const startsNewDay =
+                  index === 0 ||
+                  localDayKey(timelineEvents[index - 1].event_time) !== dayKey;
+                const commentAuthor = event.first_comment_author?.trim().split(/\s+/)[0];
+                const feedingTotal =
+                  event.kind === "feeding"
+                    ? event.feeding_portions.reduce(
+                        (total, portion) => total + portion.amount_ml,
+                        0,
+                      )
+                    : null;
+                return (
                 <Fragment key={event.id}>
                   {startsNewDay && (
                     <div className="timeline-date-divider">
@@ -1469,8 +1509,9 @@ export default function App() {
                     </div>
                   </article>
                 </Fragment>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </section>
           </>

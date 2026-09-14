@@ -38,6 +38,8 @@ const hebrew: Record<string, string> = {
   "Last feeding": "האכלה אחרונה",
   "Next expected": "הצפוי הבא",
   "Care today": "טיפול היום",
+  "Feedings today": "האכלות היום",
+  "Diapers today": "קקי ופיפי היום",
   "Care history": "היסטוריית טיפול",
   All: "הכול",
   by: "על ידי",
