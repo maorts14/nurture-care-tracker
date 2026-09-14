@@ -31,7 +31,6 @@ export function LanguagePicker({
         >
           <X size={20} />
         </button>
-        <p className="eyebrow">{t("PREFERENCES")}</p>
         <h2 id="language-title">{t("Language")}</h2>
         <p className="time-hint">
           {t("Choose the language for your family space.")}

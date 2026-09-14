@@ -236,6 +236,11 @@ function eventDetail(
 export default function App() {
   const localSample = !import.meta.env.PROD;
   const [user, setUser] = useState<User | null>(null);
+  const [guestLocale, setGuestLocale] = useState<User["locale"]>(() =>
+    localStorage.getItem("feedme_locale") === "he" || navigator.language.startsWith("he")
+      ? "he"
+      : "en",
+  );
   const [children, setChildren] = useState<Child[]>([]);
   const [members, setMembers] = useState<ChildMember[]>([]);
   const [child, setChild] = useState<Child | null>(null);
@@ -278,8 +283,7 @@ export default function App() {
   );
   const [leavePreview, setLeavePreview] = useState<LeavePreview | null>(null);
   usePageScrollLock(mobileSidebarOpen);
-  const locale: User["locale"] =
-    user?.locale ?? (navigator.language.startsWith("he") ? "he" : "en");
+  const locale: User["locale"] = user?.locale ?? guestLocale;
   const t = (text: string) => translate(locale, text);
   const insightsOpen = /^\/children\/[^/]+\/insights$/.test(routePath);
   const caregiversOpen = /^\/children\/[^/]+\/caregivers$/.test(routePath);
@@ -871,11 +875,18 @@ export default function App() {
     setLogOpen(true);
   }
   const setLocale = async (locale: User["locale"]) => {
-    if (!user) return;
+    if (!user) {
+      localStorage.setItem("feedme_locale", locale);
+      setGuestLocale(locale);
+      setLanguageOpen(false);
+      return;
+    }
     await api("/api/me/locale", {
       method: "PUT",
       body: JSON.stringify({ locale }),
     });
+    localStorage.setItem("feedme_locale", locale);
+    setGuestLocale(locale);
     setUser({ ...user, locale });
     setLanguageOpen(false);
   };
@@ -896,77 +907,93 @@ export default function App() {
   if (!user)
     return (
       <div className="sign-in-shell">
-        <form className="sign-in" onSubmit={login}>
-          <FeedmeBrand />
-          <p className="eyebrow">{t("SHARED CHILD CARE")}</p>
-          <h1>
-            {auth === "sign-in"
-              ? t("Welcome back.")
-              : t("Start your family space.")}
-          </h1>
-          {invitePreview && (
-            <p className="pending-invitation">
-              {t("You’re invited to join the care space for")} {invitePreview.child_name}.
-              <br />
-              {t("Sign in or create an account to continue.")}
-            </p>
-          )}
-          {auth === "register" && (
+        <div className="sign-in-frame">
+          <div className="sign-in-language">
+            <LanguageControl
+              locale={locale}
+              label={t("Language")}
+              onClick={() => setLanguageOpen(true)}
+            />
+          </div>
+          <form className="sign-in" onSubmit={login}>
+            <FeedmeBrand />
+            <p className="eyebrow">{t("SHARED CHILD CARE")}</p>
+            <h1>
+              {auth === "sign-in"
+                ? t("Welcome back.")
+                : t("Start your family space.")}
+            </h1>
+            {invitePreview && (
+              <p className="pending-invitation">
+                {t("You’re invited to join the care space for")} {invitePreview.child_name}.
+                <br />
+                {t("Sign in or create an account to continue.")}
+              </p>
+            )}
+            {auth === "register" && (
+              <label>
+                {t("Name")}
+                <input
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  required
+                />
+              </label>
+            )}
             <label>
-              {t("Name")}
+              {t("Email")}
               <input
-                value={name}
-                onChange={(event) => setName(event.target.value)}
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                type="email"
                 required
               />
             </label>
-          )}
-          <label>
-            {t("Email")}
-            <input
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              type="email"
-              required
-            />
-          </label>
-          <label>
-            {t("Password")}
-            <input
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              type="password"
-              minLength={8}
-              required
-            />
-          </label>
-          {error && <p className="form-error">{error}</p>}
-          <button className="primary submit">
-            {auth === "sign-in" ? t("Sign in") : t("Create account")}
-          </button>
-          <button
-            className="text-button auth-switch"
-            type="button"
-            onClick={() => setAuth(auth === "sign-in" ? "register" : "sign-in")}
-          >
-            {auth === "sign-in"
-              ? t("Need an account? Register")
-              : t("Already have an account? Sign in")}
-          </button>
-          <a
-            className="google-link"
-            href={`/api/auth/google?returnTo=${encodeURIComponent(
-              `${location.pathname}${location.search}`,
-            )}`}
-          >
-            {t("Continue with Google")}
-          </a>
-          <small>
-            {localSample
-              ? `${t("Local sample:")} alex@nurture.local / nurture-demo`
-              : t("Use your account details, or create an account to get started.")}
-          </small>
-        </form>
+            <label>
+              {t("Password")}
+              <input
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                type="password"
+                minLength={8}
+                required
+              />
+            </label>
+            {error && <p className="form-error">{error}</p>}
+            <button className="primary submit">
+              {auth === "sign-in" ? t("Sign in") : t("Create account")}
+            </button>
+            <button
+              className="text-button auth-switch"
+              type="button"
+              onClick={() => setAuth(auth === "sign-in" ? "register" : "sign-in")}
+            >
+              {auth === "sign-in"
+                ? t("Need an account? Register")
+                : t("Already have an account? Sign in")}
+            </button>
+            <a
+              className="google-link"
+              href={`/api/auth/google?returnTo=${encodeURIComponent(
+                `${location.pathname}${location.search}`,
+              )}`}
+            >
+              {t("Continue with Google")}
+            </a>
+            <small>
+              {localSample
+                ? `${t("Local sample:")} alex@nurture.local / nurture-demo`
+                : t("Use your account details, or create an account to get started.")}
+            </small>
+          </form>
+        </div>
+        {languageOpen && (
+          <LanguagePicker
+            locale={locale}
+            onClose={() => setLanguageOpen(false)}
+            onSelect={setLocale}
+          />
+        )}
       </div>
     );
   if (routePath === "/children")
@@ -1231,7 +1258,7 @@ export default function App() {
           <div>
             <p>{t("Care today")}</p>
             <strong>
-              {todayEvents.length} {t("events")}
+              {todayEvents.length} {t("records")}
             </strong>
           </div>
         </section>

@@ -29,11 +29,35 @@ button {
   min-height: 100vh;
   display: grid;
   place-items: center;
+  position: relative;
   background: #f7f4ef;
   color: #625a54;
 }
-.sign-in {
+.sign-in-frame {
+  position: relative;
   width: min(390px, calc(100vw - 36px));
+}
+.sign-in-language {
+  position: absolute;
+  inset-block-end: calc(100% + 6px);
+  inset-inline: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+.sign-in-language .language-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 11px;
+  border: 1px solid #e1dad1;
+  border-radius: 9px;
+  background: #fffdf9;
+  color: #605b55;
+  font-size: 12px;
+  box-shadow: 0 7px 18px #3a28160a;
+}
+.sign-in {
+  width: 100%;
   padding: 34px;
   background: #fffdf9;
   border: 1px solid #e8e1d7;
@@ -613,7 +637,7 @@ nav em {
 .upcoming-actions .text-button {
   color: #6d6760;
 }
-.language-button {
+.sidebar .language-button {
   margin-top: 14px;
   border-top: 1px solid #ded8cf;
   border-radius: 0 !important;
@@ -1418,6 +1442,9 @@ nav em {
   }
 }
 @media (max-width: 680px) {
+  .language-modal h2 {
+    margin-top: 8px;
+  }
   .app-shell {
     display: block;
   }

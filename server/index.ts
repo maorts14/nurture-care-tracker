@@ -356,7 +356,7 @@ app.post("/api/children", async (request, response) => {
       `
       WITH defaults (kind, field_key, label, field_type, unit, options, dashboard_metrics) AS (
         VALUES
-          ('diaper'::activity_kind, 'type', 'Diaper type', 'select', NULL, '["Wet", "Dirty", "Mixed"]'::jsonb, '["count"]'::jsonb)
+          ('diaper'::activity_kind, 'type', 'Diaper type', 'select', NULL, '["Wet", "Dirty", "Mixed", "Empty"]'::jsonb, '["count"]'::jsonb)
       )
       INSERT INTO activity_field_definition (activity_id, field_key, label, field_type, unit, options, dashboard_metrics)
       SELECT activity.id, defaults.field_key, defaults.label, defaults.field_type, defaults.unit, defaults.options, defaults.dashboard_metrics
