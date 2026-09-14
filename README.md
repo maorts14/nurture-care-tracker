@@ -73,7 +73,7 @@ This is deliberately separate from `docker-compose.yml`, which is the hot-reload
 
 `db` is an otherwise standard PostgreSQL 16 container. The custom database image only bundles `server/schema.sql` as PostgreSQL's first-run initialization file, so the VPS can start an empty database without a source checkout. It contains no real data. Real data lives in the Docker named volume `nurture_data`, outside the short-lived container filesystem. Replacing the database image does not erase that volume. Later schema changes are handled by the API migration runner.
 
-`api` is the Express and Socket.IO server. It waits for PostgreSQL's health check before starting. On startup, it runs any unapplied SQL migrations and then serves the application. Its `/api/health` endpoint returns `{"status":"ok"}` only after a real `SELECT 1` succeeds against PostgreSQL; Docker uses this endpoint to identify an unhealthy API.
+`api` is the Express and Socket.IO server. It waits for PostgreSQL's health check before starting. On startup, it runs any unapplied SQL migrations and then serves the application. Its `/api/health` endpoint returns `{"status":"ok","version":"...","commit":"..."}` only after a real `SELECT 1` succeeds against PostgreSQL; Docker uses this endpoint to identify an unhealthy API. Release images embed their Git tag version and commit at build time.
 
 `web` is Nginx serving the built React files. Nginx also forwards `/api/*` and `/socket.io/*` to `api:3001` inside Docker. That means the browser sees one origin (`https://feedme-baby.com`), which keeps cookies and real-time Socket.IO connections simple.
 
@@ -202,7 +202,7 @@ docker compose --env-file .env -f docker-compose.prod.yml ps
 curl -fsS https://feedme-baby.com/api/health
 ```
 
-The health endpoint returns `{"status":"ok"}` only when Express can reach PostgreSQL.
+The health endpoint returns `{"status":"ok","version":"...","commit":"..."}` only when Express can reach PostgreSQL. The version and commit identify the API image currently running on the VPS.
 
 ### 4. Restart automatically after a VPS reboot
 
@@ -260,7 +260,7 @@ The repository must have these GitHub Actions secrets before automatic deploymen
 - `VPS_SSH_PRIVATE_KEY`: the dedicated deployment key's private half.
 - `VPS_SSH_KNOWN_HOSTS`: the pinned `known_hosts` line for the VPS.
 
-The workflow serializes releases, so an older tag cannot finish after a newer tag and overwrite `latest`. If an automatic deployment fails, the published images remain available and the VPS keeps its previously running containers. You can rerun that job after correcting the problem, or deploy manually:
+The workflow serializes releases, so an older tag cannot finish after a newer tag and overwrite `latest`. After deployment it verifies that the public health endpoint reports the exact release version that triggered the workflow. If an automatic deployment fails, the published images remain available and the VPS keeps its previously running containers. You can rerun that job after correcting the problem, or deploy manually:
 
 ```sh
 cd /opt/nurture

@@ -11,6 +11,8 @@ import { pool } from "./database.js";
 type Session = { userId: string };
 const port = Number(process.env.PORT ?? 3001);
 const secret = process.env.JWT_SECRET ?? "development-only-secret-change-me";
+const version = process.env.APP_VERSION ?? "development";
+const commit = process.env.APP_COMMIT ?? "unknown";
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -32,7 +34,7 @@ app.use(express.json());
 app.get("/api/health", async (_request, response) => {
   try {
     await pool.query("SELECT 1");
-    response.json({ status: "ok" });
+    response.json({ status: "ok", version, commit });
   } catch {
     response.status(503).json({ status: "unavailable" });
   }
