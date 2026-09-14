@@ -195,10 +195,12 @@ const hebrew: Record<string, string> = {
   "Logs in or across this range do not affect interval analytics.":
     "רשומות בטווח זה אינן משפיעות על ניתוח מרווחי הזמן.",
   Role: "תפקיד",
+  "Care manager": "מנהל טיפול",
   Caregiver: "מטפל",
   Caregivers: "מטפלים",
   Viewer: "צופה",
   caregiver: "מטפל",
+  care_manager: "מנהל טיפול",
   viewer: "צופה",
   "Create invitation": "יצירת הזמנה",
   "People with access to this child's care space.":

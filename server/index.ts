@@ -53,7 +53,7 @@ function requireSession(request: Request, response: Response): Session | null {
   return session;
 }
 async function membership(childId: string, userId: string) {
-  return pool.query<{ role: "owner" | "caregiver" | "viewer" }>(
+  return pool.query<{ role: "owner" | "care_manager" | "caregiver" | "viewer" }>(
     "SELECT role FROM child_membership WHERE child_id = $1 AND user_id = $2",
     [childId, userId],
   );
@@ -259,7 +259,7 @@ app.get("/api/children/:childId/members", async (request, response) => {
     id: string;
     display_name: string;
     email: string;
-    role: "owner" | "caregiver" | "viewer";
+    role: "owner" | "care_manager" | "caregiver" | "viewer";
     joined_at: string;
   }>(
     `SELECT member.user_id AS id, user_account.display_name, user_account.email, member.role, member.joined_at
@@ -267,7 +267,7 @@ app.get("/api/children/:childId/members", async (request, response) => {
      JOIN app_user AS user_account ON user_account.id = member.user_id
      JOIN child_membership AS requester ON requester.child_id = member.child_id
      WHERE member.child_id = $1 AND requester.user_id = $2
-     ORDER BY CASE member.role WHEN 'owner' THEN 0 ELSE 1 END, member.joined_at ASC`,
+     ORDER BY CASE member.role WHEN 'owner' THEN 0 WHEN 'care_manager' THEN 1 WHEN 'caregiver' THEN 2 ELSE 3 END, member.joined_at ASC`,
     [request.params.childId, session.userId],
   );
   response.json(result.rows);
@@ -275,9 +275,13 @@ app.get("/api/children/:childId/members", async (request, response) => {
 app.put("/api/children/:childId/members/:memberId", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
-  const { role } = request.body as { role: "caregiver" | "viewer" };
-  if (role !== "caregiver" && role !== "viewer") {
-    response.status(400).json({ error: "Choose caregiver or viewer access" });
+  const { role } = request.body as {
+    role: "care_manager" | "caregiver" | "viewer";
+  };
+  if (role !== "care_manager" && role !== "caregiver" && role !== "viewer") {
+    response
+      .status(400)
+      .json({ error: "Choose care manager, caregiver, or viewer access" });
     return;
   }
   const updated = await pool.query<{ user_id: string }>(
@@ -416,7 +420,7 @@ app.get("/api/children/:childId/leave-preview", async (request, response) => {
   if (!session) return;
   const { childId } = request.params;
   const member = await pool.query<{
-    role: "owner" | "caregiver" | "viewer";
+    role: "owner" | "care_manager" | "caregiver" | "viewer";
     child_name: string;
   }>(
     "SELECT membership.role, child.name AS child_name FROM child_membership AS membership JOIN child ON child.id = membership.child_id WHERE membership.child_id = $1 AND membership.user_id = $2 AND child.archived_at IS NULL",
@@ -452,7 +456,7 @@ app.post("/api/children/:childId/leave", async (request, response) => {
   try {
     await client.query("BEGIN");
     const member = await client.query<{
-      role: "owner" | "caregiver" | "viewer";
+      role: "owner" | "care_manager" | "caregiver" | "viewer";
     }>(
       "SELECT membership.role FROM child JOIN child_membership AS membership ON membership.child_id = child.id WHERE child.id = $1 AND membership.user_id = $2 AND child.archived_at IS NULL FOR UPDATE OF child, membership",
       [childId, session.userId],
@@ -770,7 +774,7 @@ app.post("/api/children/:childId/logs", async (request, response) => {
     const access = await client.query<{
       kind: "feeding" | "diaper" | "custom";
     }>(
-      `SELECT activity.kind FROM child_membership AS membership JOIN activity_definition AS activity ON activity.id = $2 AND activity.child_id = membership.child_id WHERE membership.child_id = $1 AND membership.user_id = $3 AND membership.role IN ('owner', 'caregiver') AND activity.archived_at IS NULL`,
+      `SELECT activity.kind FROM child_membership AS membership JOIN activity_definition AS activity ON activity.id = $2 AND activity.child_id = membership.child_id WHERE membership.child_id = $1 AND membership.user_id = $3 AND membership.role IN ('owner', 'care_manager', 'caregiver') AND activity.archived_at IS NULL`,
       [childId, activityId, session.userId],
     );
     if (access.rowCount !== 1) {
@@ -881,14 +885,14 @@ app.put("/api/logs/:logId", async (request, response) => {
        FROM activity_log AS log
        JOIN child_membership AS membership ON membership.child_id = log.child_id
        JOIN activity_definition AS activity ON activity.id = $2 AND activity.child_id = log.child_id
-       WHERE log.id = $1 AND membership.user_id = $3 AND (membership.role = 'owner' OR log.created_by = $3) AND activity.archived_at IS NULL`,
+       WHERE log.id = $1 AND membership.user_id = $3 AND (membership.role IN ('owner', 'care_manager') OR log.created_by = $3) AND activity.archived_at IS NULL`,
       [request.params.logId, activityId, session.userId],
     );
     if (access.rowCount !== 1) {
       await client.query("ROLLBACK");
       response
         .status(403)
-        .json({ error: "Only the log creator or owner can edit this record" });
+        .json({ error: "Only the log creator, care manager, or owner can edit this record" });
       return;
     }
     const feedingPortions =
@@ -976,7 +980,7 @@ app.post("/api/children/:childId/invitations", async (request, response) => {
   const { childId } = request.params;
   const { email: rawEmail, role } = request.body as {
     email?: string;
-    role: "caregiver" | "viewer";
+    role: "care_manager" | "caregiver" | "viewer";
   };
   const email = rawEmail?.trim().toLowerCase() || null;
   const access = await membership(childId, session.userId);
@@ -1003,7 +1007,7 @@ app.get("/api/invitations/:token", async (request, response) => {
     child_name: string;
     invited_by_name: string;
     created_at: string;
-    role: "caregiver" | "viewer";
+    role: "care_manager" | "caregiver" | "viewer";
   }>(
     `SELECT child.name AS child_name, inviter.display_name AS invited_by_name, invitation.created_at, invitation.role FROM child_invitation AS invitation JOIN child ON child.id = invitation.child_id JOIN app_user AS inviter ON inviter.id = invitation.invited_by LEFT JOIN app_user AS recipient ON recipient.id = $2 WHERE invitation.token = $1 AND invitation.accepted_at IS NULL AND invitation.expires_at > now() AND (invitation.email IS NULL OR lower(invitation.email) = lower(recipient.email))`,
     [token, session?.userId ?? null],
@@ -1335,7 +1339,7 @@ app.post("/api/logs/:logId/comments", async (request, response) => {
   if (!session) return;
   const { body } = request.body as { body: string };
   const comment = await pool.query(
-    `WITH inserted AS (INSERT INTO log_comment (log_id, body, created_by) SELECT log.id, $2, $3 FROM activity_log AS log JOIN child_membership AS membership ON membership.child_id = log.child_id WHERE log.id = $1 AND membership.user_id = $3 AND membership.role IN ('owner', 'caregiver') RETURNING *) SELECT inserted.*, log.child_id FROM inserted JOIN activity_log AS log ON log.id = inserted.log_id`,
+      `WITH inserted AS (INSERT INTO log_comment (log_id, body, created_by) SELECT log.id, $2, $3 FROM activity_log AS log JOIN child_membership AS membership ON membership.child_id = log.child_id WHERE log.id = $1 AND membership.user_id = $3 AND membership.role IN ('owner', 'care_manager', 'caregiver') RETURNING *) SELECT inserted.*, log.child_id FROM inserted JOIN activity_log AS log ON log.id = inserted.log_id`,
     [request.params.logId, body, session.userId],
   );
   if (comment.rowCount !== 1) {

@@ -6,7 +6,7 @@ type ChildMember = {
   id: string;
   display_name: string;
   email: string;
-  role: "owner" | "caregiver" | "viewer";
+  role: "owner" | "care_manager" | "caregiver" | "viewer";
 };
 
 type Props = {
@@ -15,7 +15,10 @@ type Props = {
   owner: boolean;
   onBack: () => void;
   onOpenNavigation: () => void;
-  onChangeRole: (member: ChildMember, role: "caregiver" | "viewer") => void;
+  onChangeRole: (
+    member: ChildMember,
+    role: "care_manager" | "caregiver" | "viewer",
+  ) => void;
   onRemove: (member: ChildMember) => void;
 };
 
@@ -53,7 +56,7 @@ export function CaregiversPage({
             <div className="member-details">
               <strong>{member.display_name}</strong>
               <small>
-                <bdi>{member.email}</bdi> · {t(member.role)}
+                <bdi>{member.email}</bdi> · {t(member.role === "care_manager" ? "Care manager" : member.role)}
               </small>
             </div>
             {owner && member.role !== "owner" && (
@@ -65,10 +68,11 @@ export function CaregiversPage({
                     onChange={(event) =>
                       onChangeRole(
                         member,
-                        event.target.value as "caregiver" | "viewer",
+                        event.target.value as "care_manager" | "caregiver" | "viewer",
                       )
                     }
                   >
+                    <option value="care_manager">{t("Care manager")}</option>
                     <option value="caregiver">{t("Caregiver")}</option>
                     <option value="viewer">{t("Viewer")}</option>
                   </select>

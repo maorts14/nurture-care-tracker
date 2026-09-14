@@ -100,7 +100,7 @@ type ActivityMetrics = {
   average_amount_ml: number | null;
 };
 type Dashboard = {
-  role: "owner" | "caregiver" | "viewer";
+  role: "owner" | "care_manager" | "caregiver" | "viewer";
   timeline: Event[];
   activities: Activity[];
   reminders: Reminder[];
@@ -114,7 +114,7 @@ type ChildMember = {
   id: string;
   display_name: string;
   email: string;
-  role: "owner" | "caregiver" | "viewer";
+  role: "owner" | "care_manager" | "caregiver" | "viewer";
 };
 type User = {
   id: string;
@@ -139,7 +139,7 @@ type InvitationPreview = {
   child_name: string;
   invited_by_name: string;
   created_at: string;
-  role: "caregiver" | "viewer";
+  role: "care_manager" | "caregiver" | "viewer";
 };
 type LeavePreview = {
   action: "leave" | "transfer" | "delete";
@@ -849,7 +849,7 @@ export default function App() {
   }
   async function changeMemberRole(
     member: ChildMember,
-    role: "caregiver" | "viewer",
+    role: "care_manager" | "caregiver" | "viewer",
   ) {
     if (!child) return;
     await api(`/api/children/${child.id}/members/${member.id}`, {
@@ -1071,7 +1071,9 @@ export default function App() {
         comment={comment}
         userId={user.id}
         write={write}
-        canEditLog={owner || selected!.created_by_id === user.id}
+        canEditLog={
+          owner || dash.role === "care_manager" || selected!.created_by_id === user.id
+        }
         canDeleteLog={owner || selected!.created_by_id === user.id}
         onClose={() => setSelected(null)}
         onChange={setComment}
@@ -1166,7 +1168,7 @@ export default function App() {
           </button>
           <SidebarAccount
             displayName={user.display_name}
-            detail={t(dash.role)}
+            detail={t(dash.role === "care_manager" ? "Care manager" : dash.role)}
             signOutLabel={t("Sign out")}
             onSignOut={signOut}
           />
@@ -1299,6 +1301,13 @@ export default function App() {
               const startsNewDay =
                 index === 0 || localDayKey(events[index - 1].event_time) !== dayKey;
               const commentAuthor = event.first_comment_author?.trim().split(/\s+/)[0];
+              const feedingTotal =
+                event.kind === "feeding"
+                  ? event.feeding_portions.reduce(
+                      (total, portion) => total + portion.amount_ml,
+                      0,
+                    )
+                  : null;
               return (
                 <Fragment key={event.id}>
                   {startsNewDay && (
@@ -1324,7 +1333,14 @@ export default function App() {
                     </span>
                     <div className="event-content">
                       <div className="event-title">
-                        <h3>{t(event.activity_name)}</h3>
+                        <h3>
+                          {t(event.activity_name)}
+                          {feedingTotal !== null && (
+                            <span className="feeding-total">
+                              · {feedingTotal} {t("ml")}
+                            </span>
+                          )}
+                        </h3>
                         <span>
                           {t("by")} {event.created_by}
                         </span>
@@ -1352,7 +1368,9 @@ export default function App() {
                       )}
                     </div>
                     <div className="event-actions">
-                      {(owner || event.created_by_id === user.id) && (
+                      {(owner ||
+                        dash.role === "care_manager" ||
+                        event.created_by_id === user.id) && (
                         <button
                           className="more"
                           aria-label={`${t("Edit")} ${t(event.activity_name)}`}
@@ -1570,7 +1588,7 @@ function InvitationPreviewModal({
           </div>
           <div>
             <dt>{t("Your role")}</dt>
-            <dd>{t(invitation.role)}</dd>
+            <dd>{t(invitation.role === "care_manager" ? "Care manager" : invitation.role)}</dd>
           </div>
         </dl>
         <div className="invitation-actions">
@@ -2266,7 +2284,7 @@ function ChildrenHome({
                   <small className="child-meta">
                     {user.locale === "he" ? (
                       <>
-                        <span>{t(item.role)}</span>
+                        <span>{t(item.role === "care_manager" ? "Care manager" : item.role)}</span>
                         <span>·</span>
                         <bdi dir="rtl">
                           {timeZoneLabel(item.timezone, user.locale)}
@@ -2278,7 +2296,7 @@ function ChildrenHome({
                           {timeZoneLabel(item.timezone, user.locale)}
                         </bdi>
                         <span>·</span>
-                        <span>{t(item.role)}</span>
+                        <span>{t(item.role === "care_manager" ? "Care manager" : item.role)}</span>
                       </>
                     )}
                   </small>
@@ -2541,6 +2559,7 @@ function ManageModal({
             <label>
               {t("Role")}
               <select name="role">
+                <option value="care_manager">{t("Care manager")}</option>
                 <option value="caregiver">{t("Caregiver")}</option>
                 <option value="viewer">{t("Viewer")}</option>
               </select>
@@ -2606,7 +2625,7 @@ function ManageModal({
                 <article key={child.id}>
                   <strong>{child.name}</strong>
                   <p>
-                    {t("Your role:")} {t(child.role)}
+                    {t("Your role:")} {t(child.role === "care_manager" ? "Care manager" : child.role)}
                   </p>
                   {child.role === "owner" && (
                     <button

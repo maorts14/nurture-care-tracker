@@ -770,6 +770,12 @@ nav em {
   font-size: 13px;
   margin: 0;
 }
+.event-title .feeding-total {
+  color: #665e57;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .event-title span,
 .event-content p {
   color: #847c74;

@@ -14,6 +14,7 @@ Seeded local accounts:
 
 - `alex@nurture.local` / `nurture-demo` (owner)
 - `maya@nurture.local` / `nurture-demo` (caregiver)
+- `sam@nurture.local` / `nurture-demo` (care manager for Leo)
 
 The API is exposed at `http://localhost:3001`, PostgreSQL at `localhost:5432`, and the Node inspector at `localhost:9229` for local development. Stop the local stack with `docker compose down`. Add `-v` only when you intentionally want to erase the local database volume and rerun the seed data.
 
@@ -22,7 +23,7 @@ In VS Code, run **Tasks: Run Task → App: start development**. For breakpoints,
 ## What is working
 
 - Password registration/sign-in and a wired Google OAuth flow
-- Multiple child spaces, direct owner/caregiver/viewer membership, and copyable invitations
+- Multiple child spaces, direct owner/care-manager/caregiver/viewer membership, and copyable invitations
 - Feeding and diaper activities created by default, plus custom activities and typed fields
 - Backdated care logs, editable/deletable own notes and comments, hard-delete controls, and real-time Socket.IO refreshes
 - Passive one-off and recurring reminders with create, edit, complete, and delete controls; recurring timing is based on the latest matching activity

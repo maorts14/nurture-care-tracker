@@ -1,6 +1,6 @@
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-CREATE TYPE child_role AS ENUM ('owner', 'caregiver', 'viewer');
+CREATE TYPE child_role AS ENUM ('owner', 'care_manager', 'caregiver', 'viewer');
 CREATE TYPE activity_kind AS ENUM ('feeding', 'diaper', 'custom');
 CREATE TYPE reminder_kind AS ENUM ('interval', 'one_time');
 
