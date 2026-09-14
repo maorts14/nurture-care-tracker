@@ -398,11 +398,11 @@ app.put("/api/children/:childId", async (request, response) => {
 app.delete("/api/children/:childId", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
-  const archived = await pool.query(
-    "UPDATE child SET archived_at = now() WHERE id = $1 AND EXISTS (SELECT 1 FROM child_membership WHERE child_id = child.id AND user_id = $2 AND role = 'owner') RETURNING id",
+  const deleted = await pool.query(
+    "DELETE FROM child WHERE id = $1 AND EXISTS (SELECT 1 FROM child_membership WHERE child_id = child.id AND user_id = $2 AND role = 'owner') RETURNING id",
     [request.params.childId, session.userId],
   );
-  if (archived.rowCount !== 1) {
+  if (deleted.rowCount !== 1) {
     response
       .status(403)
       .json({ error: "Only a child owner can delete this profile" });

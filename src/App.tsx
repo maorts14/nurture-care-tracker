@@ -551,8 +551,8 @@ export default function App() {
     if (
       !confirm(
         locale === "he"
-          ? `למחוק את הפרופיל של ${item.name}? היסטוריית הטיפול הקיימת תישמר בארכיון.`
-          : `Delete ${item.name}'s profile? Its existing care history will be archived.`,
+          ? `למחוק לצמיתות את הפרופיל של ${item.name}? כל היסטוריית הטיפול תימחק ולא ניתן יהיה לשחזר אותה.`
+          : `Permanently delete ${item.name}'s profile? All care history will be deleted and cannot be restored.`,
       )
     )
       return;
