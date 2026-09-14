@@ -39,6 +39,7 @@ const hebrew: Record<string, string> = {
   "Next expected": "הצפוי הבא",
   "Care today": "טיפול היום",
   "Care history": "היסטוריית טיפול",
+  All: "הכול",
   by: "על ידי",
   "Choose the language for your family space.":
     "בחרו את השפה למרחב המשפחתי שלכם.",
@@ -90,6 +91,7 @@ const hebrew: Record<string, string> = {
   ml: "מ״ל",
   "Care activity": "פעילות טיפול",
   "Logged by": "תועד על ידי",
+  "Created by": "נוצר על ידי",
   Details: "פרטים",
   Close: "סגירה",
   "YOUR FAMILY SPACE": "המרחב המשפחתי שלכם",

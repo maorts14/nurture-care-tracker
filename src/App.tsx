@@ -1,4 +1,4 @@
-import { FormEvent, Fragment, useEffect, useMemo, useState } from "react";
+import { FormEvent, Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { AnalyticsView } from "./AnalyticsView";
 import { CaregiversPage } from "./CaregiversPage";
@@ -263,6 +263,9 @@ export default function App() {
   const [editingLog, setEditingLog] = useState<Event | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
+  const [timelineActivityId, setTimelineActivityId] = useState<string | null>(null);
+  const timelineSwipeStart = useRef<{ x: number; y: number } | null>(null);
+  const timelineSwipeDetected = useRef(false);
   const [activityId, setActivityId] = useState("");
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [feedingPortions, setFeedingPortions] = useState<FeedingPortionDraft[]>(
@@ -272,7 +275,6 @@ export default function App() {
   const [at, setAt] = useState(localDateTime());
   const [notes, setNotes] = useState<Note[]>([]);
   const [selected, setSelected] = useState<Event | null>(null);
-  const [detailEvent, setDetailEvent] = useState<Event | null>(null);
   const [selectedReminder, setSelectedReminder] = useState<Reminder | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [comment, setComment] = useState("");
@@ -289,7 +291,16 @@ export default function App() {
   const caregiversOpen = /^\/children\/[^/]+\/caregivers$/.test(routePath);
   const owner = dash?.role === "owner";
   const write = dash?.role !== "viewer";
+  const canEditLog = (log: Event) =>
+    owner || dash?.role === "care_manager" || log.created_by_id === user?.id;
   const events = dash?.timeline ?? [];
+  const timelineActivityIds = [
+    null,
+    ...(dash?.activities.map((activity) => activity.id) ?? []),
+  ];
+  const timelineEvents = timelineActivityId
+    ? events.filter((event) => event.activity_id === timelineActivityId)
+    : events;
   const childTimeZone = child?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const dayKeyFormatter = useMemo(
     () =>
@@ -865,7 +876,7 @@ export default function App() {
     });
     await loadMembers(child.id);
   }
-  function editLog(log: Event) {
+  function openLog(log: Event) {
     if (!child) return;
     setActivityId(log.activity_id);
     setAt(localDateTime(log.event_time));
@@ -1071,16 +1082,14 @@ export default function App() {
         comment={comment}
         userId={user.id}
         write={write}
-        canEditLog={
-          owner || dash.role === "care_manager" || selected!.created_by_id === user.id
-        }
+        canEditLog={canEditLog(selected!)}
         canDeleteLog={owner || selected!.created_by_id === user.id}
         onClose={() => setSelected(null)}
         onChange={setComment}
         onCreate={addComment}
         onEdit={editComment}
         onDeleteComment={deleteComment}
-        onEditLog={() => editLog(selected!)}
+        onEditLog={() => openLog(selected!)}
         onDeleteLog={deleteLog}
       />
     );
@@ -1295,11 +1304,73 @@ export default function App() {
               {t("Notes")}
             </button>
           </div>
-          <div className="timeline-list">
-            {events.map((event, index) => {
+          <div className="timeline-filter-carousel" role="tablist" aria-label={t("Care history")}>
+            <button
+              className={`timeline-filter-tab ${timelineActivityId === null ? "active" : ""}`}
+              role="tab"
+              aria-selected={timelineActivityId === null}
+              onClick={() => setTimelineActivityId(null)}
+            >
+              {t("All")}
+            </button>
+            {dash.activities.map((activity) => (
+              <button
+                className={`timeline-filter-tab ${timelineActivityId === activity.id ? "active" : ""}`}
+                key={activity.id}
+                role="tab"
+                aria-selected={timelineActivityId === activity.id}
+                onClick={() => setTimelineActivityId(activity.id)}
+              >
+                {t(activity.name)}
+              </button>
+            ))}
+          </div>
+          <div
+            className={`timeline-list ${timelineEvents.length ? "" : "timeline-list-empty"}`}
+            onTouchStart={(event) => {
+              const touch = event.touches[0];
+              timelineSwipeStart.current = { x: touch.clientX, y: touch.clientY };
+              timelineSwipeDetected.current = false;
+            }}
+            onTouchEnd={(event) => {
+              const start = timelineSwipeStart.current;
+              timelineSwipeStart.current = null;
+              if (!start || timelineActivityIds.length < 2) return;
+              const touch = event.changedTouches[0];
+              const horizontalDistance = touch.clientX - start.x;
+              const verticalDistance = touch.clientY - start.y;
+              if (
+                Math.abs(horizontalDistance) < 56 ||
+                Math.abs(horizontalDistance) <= Math.abs(verticalDistance)
+              )
+                return;
+              const currentIndex = Math.max(
+                0,
+                timelineActivityIds.indexOf(timelineActivityId),
+              );
+              const direction =
+                user.locale === "he"
+                  ? horizontalDistance < 0
+                    ? -1
+                    : 1
+                  : horizontalDistance < 0
+                    ? 1
+                    : -1;
+              const nextIndex =
+                (currentIndex + direction + timelineActivityIds.length) %
+                timelineActivityIds.length;
+              timelineSwipeDetected.current = true;
+              window.setTimeout(() => {
+                timelineSwipeDetected.current = false;
+              }, 250);
+              setTimelineActivityId(timelineActivityIds[nextIndex]);
+            }}
+          >
+            {timelineEvents.map((event, index) => {
               const dayKey = localDayKey(event.event_time);
               const startsNewDay =
-                index === 0 || localDayKey(events[index - 1].event_time) !== dayKey;
+                index === 0 ||
+                localDayKey(timelineEvents[index - 1].event_time) !== dayKey;
               const commentAuthor = event.first_comment_author?.trim().split(/\s+/)[0];
               const feedingTotal =
                 event.kind === "feeding"
@@ -1319,11 +1390,14 @@ export default function App() {
                     className="event event-open-detail"
                     tabIndex={0}
                     role="button"
-                    onClick={() => setDetailEvent(event)}
+                    onClick={() => {
+                      if (timelineSwipeDetected.current) return;
+                      openLog(event);
+                    }}
                     onKeyDown={(keyboardEvent) => {
                       if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
                         keyboardEvent.preventDefault();
-                        setDetailEvent(event);
+                        openLog(event);
                       }
                     }}
                   >
@@ -1368,16 +1442,14 @@ export default function App() {
                       )}
                     </div>
                     <div className="event-actions">
-                      {(owner ||
-                        dash.role === "care_manager" ||
-                        event.created_by_id === user.id) && (
+                      {canEditLog(event) && (
                         <button
                           className="more"
                           aria-label={`${t("Edit")} ${t(event.activity_name)}`}
                           title={t("Edit")}
                           onClick={(clickEvent) => {
                             clickEvent.stopPropagation();
-                            editLog(event);
+                            openLog(event);
                           }}
                         >
                           <Pencil size={16} />
@@ -1411,15 +1483,6 @@ export default function App() {
           onSelect={setLocale}
         />
       )}
-      {detailEvent && (
-        <EventDetailModal
-          event={detailEvent}
-          activities={dash.activities}
-          locale={user.locale}
-          timeZone={child.timezone}
-          onClose={() => setDetailEvent(null)}
-        />
-      )}
       {selectedReminder && (
         <ReminderDetailModal
           reminder={selectedReminder}
@@ -1440,6 +1503,8 @@ export default function App() {
           values={values}
           portions={feedingPortions}
           note={note}
+          createdBy={editingLog?.created_by}
+          editable={!editingLog || canEditLog(editingLog)}
           onClose={() => {
             setEditingLog(null);
             setLogOpen(false);
@@ -1811,59 +1876,6 @@ function UpcomingList({
   );
 }
 
-function EventDetailModal({
-  event,
-  activities,
-  locale,
-  timeZone,
-  onClose,
-}: {
-  event: Event;
-  activities: Activity[];
-  locale: User["locale"];
-  timeZone: string;
-  onClose: () => void;
-}) {
-  const t = (text: string) => translate(locale, text);
-  const eventDate = new Intl.DateTimeFormat(locale === "he" ? "he-IL" : "en-US", {
-    timeZone,
-    dateStyle: "full",
-    timeStyle: "short",
-  }).format(new Date(event.event_time));
-  return (
-    <ModalBackdrop onClose={onClose}>
-      <section className="event-detail-modal" role="dialog" aria-modal="true">
-        <button type="button" className="close" onClick={onClose} aria-label={t("Close")}>
-          <X size={20} />
-        </button>
-        <div className="event-detail-heading">
-          <i style={{ background: event.color }}>{icon(event.kind)}</i>
-          <div>
-            <h2>{t(event.activity_name)}</h2>
-            <p>{eventDate}</p>
-          </div>
-        </div>
-        <dl className="event-detail-list">
-          <div>
-            <dt>{t("Logged by")}</dt>
-            <dd>{event.created_by}</dd>
-          </div>
-          <div>
-            <dt>{t("Details")}</dt>
-            <dd>{eventDetail(event, activities, t)}</dd>
-          </div>
-          {event.note && (
-            <div>
-              <dt>{t("Note")}</dt>
-              <dd>“{event.note}”</dd>
-            </div>
-          )}
-        </dl>
-      </section>
-    </ModalBackdrop>
-  );
-}
-
 function LogModal({
   locale,
   activity,
@@ -1872,6 +1884,8 @@ function LogModal({
   values,
   portions,
   note,
+  createdBy,
+  editable,
   editing,
   onClose,
   onActivity,
@@ -1888,6 +1902,8 @@ function LogModal({
   values: Record<string, unknown>;
   portions: FeedingPortionDraft[];
   note: string;
+  createdBy?: string;
+  editable: boolean;
   editing: boolean;
   onClose: () => void;
   onActivity: (id: string) => void;
@@ -1904,14 +1920,21 @@ function LogModal({
         <button type="button" className="close" onClick={onClose}>
           <X size={20} />
         </button>
-        <p className="eyebrow">{t("QUICK LOG")}</p>
+        <p className="eyebrow">{t(editing ? "CARE RECORD" : "QUICK LOG")}</p>
         <h2>{t(editing ? "Edit care record" : "What happened?")}</h2>
+        {createdBy && (
+          <div className="log-created-by">
+            <span>{t("Created by")}</span>
+            <strong>{createdBy}</strong>
+          </div>
+        )}
         <div className="activity-picker">
           {activities.map((item) => (
             <button
               type="button"
               key={item.id}
               className={item.id === activity?.id ? "selected" : ""}
+              disabled={!editable}
               onClick={() => onActivity(item.id)}
             >
               <i style={{ background: item.color }}>{icon(item.kind)}</i>
@@ -1924,6 +1947,7 @@ function LogModal({
           <input
             type="datetime-local"
             value={at}
+            disabled={!editable}
             onChange={(event) => onAt(event.target.value)}
             required
           />
@@ -1936,6 +1960,7 @@ function LogModal({
                 <select
                   aria-label={t("Milk type")}
                   value={portion.kind}
+                  disabled={!editable}
                   onChange={(event) =>
                     onPortions(
                       portions.map((item, itemIndex) =>
@@ -1956,6 +1981,7 @@ function LogModal({
                 <select
                   aria-label={t("Feeding method")}
                   value={portion.deliveryMethod}
+                  disabled={!editable}
                   onChange={(event) =>
                     onPortions(
                       portions.map((item, itemIndex) =>
@@ -1981,6 +2007,7 @@ function LogModal({
                     step="0.1"
                     required
                     value={portion.amountMl}
+                    disabled={!editable}
                     onChange={(event) =>
                       onPortions(
                         portions.map((item, itemIndex) =>
@@ -1998,6 +2025,7 @@ function LogModal({
                     className="portion-remove"
                     type="button"
                     aria-label={t("Remove portion")}
+                    disabled={!editable}
                     onClick={() =>
                       onPortions(
                         portions.filter((_, itemIndex) => itemIndex !== index),
@@ -2012,6 +2040,7 @@ function LogModal({
             <button
               className="text-button add-portion"
               type="button"
+              disabled={!editable}
               onClick={() =>
                 onPortions([
                   ...portions,
@@ -2031,6 +2060,7 @@ function LogModal({
                 <input
                   type="checkbox"
                   checked={Boolean(values[field.field_key])}
+                  disabled={!editable}
                   onChange={(event) =>
                     onValues({
                       ...values,
@@ -2041,6 +2071,7 @@ function LogModal({
               ) : field.field_type === "select" && field.options.length ? (
                 <select
                   value={String(values[field.field_key] ?? "")}
+                  disabled={!editable}
                   onChange={(event) =>
                     onValues({
                       ...values,
@@ -2061,6 +2092,7 @@ function LogModal({
                       : "text"
                   }
                   value={String(values[field.field_key] ?? "")}
+                  disabled={!editable}
                   onChange={(event) =>
                     onValues({
                       ...values,
@@ -2076,13 +2108,16 @@ function LogModal({
           {t("Note")}
           <textarea
             value={note}
+            disabled={!editable}
             onChange={(event) => onNote(event.target.value)}
             placeholder={t("Optional context for everyone")}
           />
         </label>
-        <button className="primary submit log-submit">
-          {t(editing ? "Save changes" : "Save")}
-        </button>
+        {editable && (
+          <button className="primary submit log-submit">
+            {t(editing ? "Save changes" : "Save")}
+          </button>
+        )}
       </form>
     </ModalBackdrop>
   );
