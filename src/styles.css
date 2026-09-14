@@ -1917,7 +1917,6 @@ nav em {
   min-height: 68px;
   padding: 13px 2px;
   border-bottom: 1px solid #e5dfd5;
-  will-change: transform;
 }
 .member-details {
   min-width: 0;

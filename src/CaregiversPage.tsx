@@ -1,5 +1,4 @@
 import { Menu, UserMinus } from "lucide-react";
-import { useLayoutEffect, useRef } from "react";
 import { TimelineBackButton } from "./components/TimelineBackButton";
 import { Locale, translate } from "./i18n";
 
@@ -33,38 +32,6 @@ export function CaregiversPage({
   onRemove,
 }: Props) {
   const t = (text: string) => translate(locale, text);
-  const memberRows = useRef(new Map<string, HTMLElement>());
-  const previousRowPositions = useRef(new Map<string, DOMRect>());
-
-  useLayoutEffect(() => {
-    const nextRowPositions = new Map<string, DOMRect>();
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-    for (const member of members) {
-      const row = memberRows.current.get(member.id);
-      if (!row) continue;
-
-      const nextPosition = row.getBoundingClientRect();
-      const previousPosition = previousRowPositions.current.get(member.id);
-      nextRowPositions.set(member.id, nextPosition);
-
-      if (!previousPosition || reducedMotion) continue;
-
-      const offset = previousPosition.top - nextPosition.top;
-      if (offset) {
-        row.animate(
-          [
-            { transform: `translateY(${offset}px)` },
-            { transform: "translateY(0)" },
-          ],
-          { duration: 220, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" },
-        );
-      }
-    }
-
-    previousRowPositions.current = nextRowPositions;
-  }, [members]);
-
   return (
     <section className="caregivers-page">
       <header>
@@ -84,13 +51,7 @@ export function CaregiversPage({
       {!owner && <p className="member-notice">{t("Only the owner can manage caregiver access.")}</p>}
       <section className="member-list">
         {members.map((member) => (
-          <article
-            key={member.id}
-            ref={(row) => {
-              if (row) memberRows.current.set(member.id, row);
-              else memberRows.current.delete(member.id);
-            }}
-          >
+          <article key={member.id}>
             <span className="avatar you">{member.display_name[0]}</span>
             <div className="member-details">
               <strong>{member.display_name}</strong>
