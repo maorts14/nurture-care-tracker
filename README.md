@@ -235,19 +235,32 @@ To restore a dump, stop the API and web services, then pipe the chosen dump into
 
 ### Publishing and updating the deployed app
 
-On the development computer, build and publish a versioned release to GHCR:
+GitHub Actions checks every pull request and every push to `main` with `npm run check`, `npm run build`, and a build of each production Docker image. It never receives production credentials and it does not contact the VPS.
+
+To publish a release, push a protected Git tag in the form `v1.0.1`. The **Publish release images** workflow publishes these release tags for all three images:
+
+```sh
+git tag v1.0.1
+git push origin v1.0.1
+```
+
+It uses GitHub's short-lived `GITHUB_TOKEN` with `packages: write`; no personal access token is stored in GitHub Actions. Configure the repository so workflows may write packages and protect release tags from being moved or deleted. Each release publishes three tags for every image: the version (such as `1.0.1`), `sha-<commit>` for traceability, and `latest` as the normal deployment channel.
+
+For a local emergency or development-computer publish, supply an explicit version. This publishes that numbered release and advances `latest` to it:
 
 ```sh
 ./scripts/publish-images.ps1 -Version 1.0.1
 ```
 
-Then, on the VPS, update the three `FEEDME_*_IMAGE` tag values in `/opt/nurture/.env` to `1.0.1` and run:
+For the normal automatic-update channel, set the three `FEEDME_*_IMAGE` values in `/opt/nurture/.env` to `:latest` once. Future releases then require only:
 
 ```sh
 cd /opt/nurture
 ./scripts/deploy.sh
 ```
 
-The API migration runner applies new SQL migrations once and records them in `schema_migration`, so a normal release updates code and database structure together. A release does not deliberately wipe data or load demo data. It is not zero-downtime: the API and web container may restart briefly. To roll back application code, switch the three tags back to the prior release and run the deploy script again. Database migrations must therefore remain compatible with a rollback.
+The API migration runner applies new SQL migrations once and records them in `schema_migration`, so a normal release updates code and database structure together. A release does not deliberately wipe data or load demo data. It is not zero-downtime: the API and web container may restart briefly. To roll back application code, change all three image values to the same prior version, such as `:1.0.0`, and run the deploy script again. Database migrations must therefore remain compatible with a rollback.
+
+The VPS deployment remains a manual, explicit step. Do not add its SSH key, GHCR read token, OAuth credentials, database credentials, JWT secret, or `/opt/nurture/.env` to this repository or to GitHub Actions. If automatic deployment is wanted later, create separate deployment credentials and an environment with required approval; keep publishing and deployment as distinct stages.
 
 The current app intentionally does not support offline operation or external email delivery; invitations are shareable links that must be accepted by the invited email address.
