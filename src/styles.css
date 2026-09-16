@@ -981,6 +981,9 @@ nav em {
   min-width: 25px;
   min-height: 25px;
 }
+.event-actions .delete-log {
+  color: #b43d2d;
+}
 .upcoming {
   background: #f4f1ec;
   padding: 36px 22px;
@@ -1250,6 +1253,10 @@ nav em {
   right: 17px;
   top: 17px;
   color: #726a63;
+}
+.log-modal > .close {
+  right: 10px;
+  top: 8px;
 }
 .log-modal h2 {
   font-size: 23px;

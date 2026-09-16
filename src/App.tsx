@@ -297,6 +297,7 @@ export default function App() {
   const write = dash?.role !== "viewer";
   const canEditLog = (log: Event) =>
     owner || dash?.role === "care_manager" || log.created_by_id === user?.id;
+  const canDeleteLog = (log: Event) => owner || log.created_by_id === user?.id;
   const events = dash?.timeline ?? [];
   const timelineActivityIds = [
     null,
@@ -871,15 +872,15 @@ export default function App() {
     await api(`/api/comments/${item.id}`, { method: "DELETE" });
     setComments(await api<Comment[]>(`/api/logs/${selected.id}/comments`));
   }
-  async function deleteLog() {
+  async function deleteLog(item: Event | null = selected) {
     if (
-      !selected ||
+      !item ||
       !child ||
       !confirm(t("Permanently delete this care record?"))
     )
       return;
-    await api(`/api/logs/${selected.id}`, { method: "DELETE" });
-    setSelected(null);
+    await api(`/api/logs/${item.id}`, { method: "DELETE" });
+    if (selected?.id === item.id) setSelected(null);
     await loadDash(child.id);
   }
   async function changeMemberRole(
@@ -1107,7 +1108,7 @@ export default function App() {
         userId={user.id}
         write={write}
         canEditLog={canEditLog(selected!)}
-        canDeleteLog={owner || selected!.created_by_id === user.id}
+        canDeleteLog={canDeleteLog(selected!)}
         onClose={() => setSelected(null)}
         onChange={setComment}
         onCreate={addComment}
@@ -1506,6 +1507,19 @@ export default function App() {
                       >
                         <MessageCircle size={17} />
                       </button>
+                      {canDeleteLog(event) && (
+                        <button
+                          className="more delete-log"
+                          aria-label={`${t("Delete")} ${t(event.activity_name)}`}
+                          title={t("Delete")}
+                          onClick={(clickEvent) => {
+                            clickEvent.stopPropagation();
+                            deleteLog(event);
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      )}
                     </div>
                   </article>
                 </Fragment>
@@ -1961,7 +1975,7 @@ function LogModal({
         <button type="button" className="close" onClick={onClose}>
           <X size={20} />
         </button>
-        <p className="eyebrow">{t(editing ? "CARE RECORD" : "QUICK LOG")}</p>
+        {!editing && <p className="eyebrow">{t("QUICK LOG")}</p>}
         <h2>{t(editing ? "Edit care record" : "What happened?")}</h2>
         {createdBy && (
           <div className="log-created-by">
