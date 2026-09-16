@@ -7,6 +7,7 @@ const hebrew: Record<string, string> = {
   "Welcome back.": "טוב שחזרת.",
   "Start your family space.": "התחילו את המרחב המשפחתי שלכם.",
   Name: "שם",
+  Color: "צבע",
   Email: "אימייל",
   Password: "סיסמה",
   "Sign in": "כניסה",
@@ -16,6 +17,7 @@ const hebrew: Record<string, string> = {
   "Continue with Google": "המשך עם Google",
   "You’re invited to join the care space for": "הוזמנתם להצטרף למרחב הטיפול של",
   "Sign in or create an account to continue.": "היכנסו או צרו חשבון כדי להמשיך.",
+  "Only owners and care managers can manage caregiver access.": "רק הבעלים ומנהלי הטיפול יכולים לנהל את הגישה של המטפלים.",
   "Local sample:": "דוגמה מקומית:",
   "Use your account details, or create an account to get started.":
     "היכנסו עם פרטי החשבון שלכם, או צרו חשבון כדי להתחיל.",

@@ -289,18 +289,19 @@ app.put("/api/children/:childId/members/:memberId", async (request, response) =>
   const updated = await pool.query<{ user_id: string }>(
     `UPDATE child_membership AS member
      SET role = $1
-     FROM child_membership AS owner
+     FROM child_membership AS requester
      WHERE member.child_id = $2
        AND member.user_id = $3
        AND member.role <> 'owner'
-       AND owner.child_id = member.child_id
-       AND owner.user_id = $4
-       AND owner.role = 'owner'
+       AND requester.child_id = member.child_id
+       AND requester.user_id = $4
+       AND requester.role IN ('owner', 'care_manager')
+       AND (requester.role = 'owner' OR member.role <> 'care_manager')
      RETURNING member.user_id`,
     [role, request.params.childId, request.params.memberId, session.userId],
   );
   if (updated.rowCount !== 1) {
-    response.status(403).json({ error: "Only the owner can change member access" });
+    response.status(403).json({ error: "Owner or care manager access is required" });
     return;
   }
   io.to(childRoom(request.params.childId)).emit("timeline:changed");
@@ -311,18 +312,18 @@ app.delete("/api/children/:childId/members/:memberId", async (request, response)
   if (!session) return;
   const removed = await pool.query<{ user_id: string }>(
     `DELETE FROM child_membership AS member
-     USING child_membership AS owner
+     USING child_membership AS requester
      WHERE member.child_id = $1
        AND member.user_id = $2
        AND member.role <> 'owner'
-       AND owner.child_id = member.child_id
-       AND owner.user_id = $3
-       AND owner.role = 'owner'
+       AND requester.child_id = member.child_id
+       AND requester.user_id = $3
+       AND requester.role IN ('owner', 'care_manager')
      RETURNING member.user_id`,
     [request.params.childId, request.params.memberId, session.userId],
   );
   if (removed.rowCount !== 1) {
-    response.status(403).json({ error: "Only the owner can remove members" });
+    response.status(403).json({ error: "Owner or care manager access is required" });
     return;
   }
   io.to(childRoom(request.params.childId)).emit("timeline:changed");
@@ -842,13 +843,13 @@ app.delete("/api/logs/:logId", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
   const deleted = await pool.query<{ child_id: string }>(
-    `DELETE FROM activity_log AS log USING child_membership AS membership WHERE log.id = $1 AND membership.child_id = log.child_id AND membership.user_id = $2 AND (membership.role = 'owner' OR log.created_by = $2) RETURNING log.child_id`,
+    `DELETE FROM activity_log AS log USING child_membership AS membership WHERE log.id = $1 AND membership.child_id = log.child_id AND membership.user_id = $2 AND (membership.role IN ('owner', 'care_manager') OR log.created_by = $2) RETURNING log.child_id`,
     [request.params.logId, session.userId],
   );
   if (deleted.rowCount !== 1) {
     response
       .status(403)
-      .json({ error: "Only the log creator or owner can delete this record" });
+      .json({ error: "Only the log creator, owner, or care manager can delete this record" });
     return;
   }
   io.to(childRoom(deleted.rows[0].child_id)).emit("timeline:changed");
@@ -986,8 +987,8 @@ app.post("/api/children/:childId/invitations", async (request, response) => {
   };
   const email = rawEmail?.trim().toLowerCase() || null;
   const access = await membership(childId, session.userId);
-  if (access.rows[0]?.role !== "owner") {
-    response.status(403).json({ error: "Owner access is required" });
+  if (!['owner', 'care_manager'].includes(access.rows[0]?.role ?? '')) {
+    response.status(403).json({ error: "Owner or care manager access is required" });
     return;
   }
   const invite = await pool.query<{ token: string }>(
@@ -1066,8 +1067,8 @@ app.post("/api/children/:childId/activities", async (request, response) => {
     }[];
   };
   const access = await membership(childId, session.userId);
-  if (access.rows[0]?.role !== "owner") {
-    response.status(403).json({ error: "Owner access is required" });
+  if (!['owner', 'care_manager'].includes(access.rows[0]?.role ?? '')) {
+    response.status(403).json({ error: "Owner or care manager access is required" });
     return;
   }
   const client = await pool.connect();
@@ -1122,11 +1123,11 @@ app.post("/api/activities/:activityId/fields", async (request, response) => {
     return;
   }
   const activity = await pool.query<{ child_id: string }>(
-    `SELECT activity.child_id FROM activity_definition AS activity JOIN child_membership AS membership ON membership.child_id = activity.child_id WHERE activity.id = $1 AND membership.user_id = $2 AND membership.role = 'owner'`,
+    `SELECT activity.child_id FROM activity_definition AS activity JOIN child_membership AS membership ON membership.child_id = activity.child_id WHERE activity.id = $1 AND membership.user_id = $2 AND membership.role IN ('owner', 'care_manager')`,
     [request.params.activityId, session.userId],
   );
   if (activity.rowCount !== 1) {
-    response.status(403).json({ error: "Owner access is required" });
+    response.status(403).json({ error: "Owner or care manager access is required" });
     return;
   }
   await pool.query(
@@ -1148,14 +1149,41 @@ app.delete("/api/activities/:activityId", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
   const archived = await pool.query<{ child_id: string }>(
-    `UPDATE activity_definition AS activity SET archived_at = now() FROM child_membership AS membership WHERE activity.id = $1 AND membership.child_id = activity.child_id AND membership.user_id = $2 AND membership.role = 'owner' RETURNING activity.child_id`,
+    `UPDATE activity_definition AS activity SET archived_at = now() FROM child_membership AS membership WHERE activity.id = $1 AND membership.child_id = activity.child_id AND membership.user_id = $2 AND membership.role IN ('owner', 'care_manager') RETURNING activity.child_id`,
     [request.params.activityId, session.userId],
   );
   if (archived.rowCount !== 1) {
-    response.status(403).json({ error: "Owner access is required" });
+    response.status(403).json({ error: "Owner or care manager access is required" });
     return;
   }
   io.to(childRoom(archived.rows[0].child_id)).emit("timeline:changed");
+  response.status(204).end();
+});
+app.put("/api/activities/:activityId", async (request, response) => {
+  const session = requireSession(request, response);
+  if (!session) return;
+  const { name, color } = request.body as { name: string; color: string };
+  if (!name.trim() || !color) {
+    response.status(400).json({ error: "Activity name and color are required" });
+    return;
+  }
+  const updated = await pool.query<{ child_id: string }>(
+    `UPDATE activity_definition AS activity
+     SET name = $1, color = $2
+     FROM child_membership AS membership
+     WHERE activity.id = $3
+       AND membership.child_id = activity.child_id
+       AND membership.user_id = $4
+       AND membership.role IN ('owner', 'care_manager')
+       AND activity.archived_at IS NULL
+     RETURNING activity.child_id`,
+    [name.trim(), color, request.params.activityId, session.userId],
+  );
+  if (updated.rowCount !== 1) {
+    response.status(403).json({ error: "Owner or care manager access is required" });
+    return;
+  }
+  io.to(childRoom(updated.rows[0].child_id)).emit("timeline:changed");
   response.status(204).end();
 });
 app.post("/api/children/:childId/reminders", async (request, response) => {
@@ -1171,8 +1199,8 @@ app.post("/api/children/:childId/reminders", async (request, response) => {
       scheduledFor?: string;
     };
   const access = await membership(childId, session.userId);
-  if (access.rows[0]?.role !== "owner") {
-    response.status(403).json({ error: "Owner access is required" });
+  if (!['owner', 'care_manager'].includes(access.rows[0]?.role ?? '')) {
+    response.status(403).json({ error: "Owner or care manager access is required" });
     return;
   }
   const inserted = await pool.query(
@@ -1226,7 +1254,7 @@ app.put("/api/reminders/:reminderId", async (request, response) => {
     return;
   }
   const updated = await pool.query<{ child_id: string }>(
-    "UPDATE reminder SET title = $1, activity_id = $2, kind = $3, interval_minutes = $4, scheduled_for = $5 WHERE id = $6 AND child_id IN (SELECT child_id FROM child_membership WHERE user_id = $7 AND role = 'owner') RETURNING child_id",
+    "UPDATE reminder SET title = $1, activity_id = $2, kind = $3, interval_minutes = $4, scheduled_for = $5 WHERE id = $6 AND child_id IN (SELECT child_id FROM child_membership WHERE user_id = $7 AND role IN ('owner', 'care_manager')) RETURNING child_id",
     [
       title,
       activityId ?? null,
@@ -1248,7 +1276,7 @@ app.delete("/api/reminders/:reminderId", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
   const result = await pool.query(
-    "DELETE FROM reminder WHERE id = $1 AND child_id IN (SELECT child_id FROM child_membership WHERE user_id = $2 AND role = 'owner') RETURNING child_id",
+    "DELETE FROM reminder WHERE id = $1 AND child_id IN (SELECT child_id FROM child_membership WHERE user_id = $2 AND role IN ('owner', 'care_manager')) RETURNING child_id",
     [request.params.reminderId, session.userId],
   );
   if (result.rowCount !== 1) {

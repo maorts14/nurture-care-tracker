@@ -294,10 +294,11 @@ export default function App() {
   const insightsOpen = /^\/children\/[^/]+\/insights$/.test(routePath);
   const caregiversOpen = /^\/children\/[^/]+\/caregivers$/.test(routePath);
   const owner = dash?.role === "owner";
+  const canManage = owner || dash?.role === "care_manager";
   const write = dash?.role !== "viewer";
   const canEditLog = (log: Event) =>
-    owner || dash?.role === "care_manager" || log.created_by_id === user?.id;
-  const canDeleteLog = (log: Event) => owner || log.created_by_id === user?.id;
+    canManage || log.created_by_id === user?.id;
+  const canDeleteLog = (log: Event) => canManage || log.created_by_id === user?.id;
   const events = dash?.timeline ?? [];
   const timelineActivityIds = [
     null,
@@ -704,6 +705,19 @@ export default function App() {
     )
       return;
     await api(`/api/activities/${id}`, { method: "DELETE" });
+    await loadDash(child.id);
+  }
+  async function updateActivity(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!child) return;
+    const form = new FormData(event.currentTarget);
+    await api(`/api/activities/${form.get("activityId")}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        name: form.get("name"),
+        color: form.get("color"),
+      }),
+    });
     await loadDash(child.id);
   }
   async function addField(event: FormEvent<HTMLFormElement>) {
@@ -1166,15 +1180,17 @@ export default function App() {
           className="sidebar-bottom"
           onClickCapture={() => setMobileSidebarOpen(false)}
         >
-          <button onClick={() => setPanel("activity")}>
-            <Settings2 size={18} />
-            {t("Manage care")}
-          </button>
+          {canManage && (
+            <button onClick={() => setPanel("activity")}>
+              <Settings2 size={18} />
+              {t("Manage care")}
+            </button>
+          )}
           <button onClick={() => setPanel("gap")}>
             <HeartPulse size={18} />
             {t("Declare care gap")}
           </button>
-          {owner && (
+          {canManage && (
             <button onClick={() => setPanel("invite")}>
               <Users size={18} />
               {t("Invite caregiver")}
@@ -1222,7 +1238,8 @@ export default function App() {
           <CaregiversPage
             locale={user.locale}
             members={members}
-            owner={owner}
+            canManage={canManage}
+            isOwner={owner}
             onBack={() => navigate(`/children/${child.id}`)}
             onOpenNavigation={() => setMobileSidebarOpen(true)}
             onChangeRole={changeMemberRole}
@@ -1313,7 +1330,7 @@ export default function App() {
         <UpcomingList
           reminders={dash.reminders}
           locale={user.locale}
-          owner={owner}
+          canManage={canManage}
           onLogActivity={write ? (id) => {
             setActivityId(id);
             setAt(localDateTime());
@@ -1543,7 +1560,7 @@ export default function App() {
           reminder={selectedReminder}
           activities={dash.activities}
           locale={user.locale}
-          owner={owner}
+          canManage={canManage}
           onClose={() => setSelectedReminder(null)}
           onSave={updateReminder}
           onDelete={() => deleteReminder(selectedReminder)}
@@ -1581,9 +1598,10 @@ export default function App() {
           children={children}
           notes={notes}
           inviteUrl={inviteUrl}
-          owner={owner}
+          canManage={canManage}
           onClose={() => setPanel(null)}
           onActivity={createActivity}
+          onUpdateActivity={updateActivity}
           onArchive={archiveActivity}
           onField={addField}
           onReminder={remind}
@@ -1728,7 +1746,7 @@ function ReminderDetailModal({
   reminder,
   activities,
   locale,
-  owner,
+  canManage,
   onClose,
   onSave,
   onDelete,
@@ -1736,7 +1754,7 @@ function ReminderDetailModal({
   reminder: Reminder;
   activities: Activity[];
   locale: User["locale"];
-  owner: boolean;
+  canManage: boolean;
   onClose: () => void;
   onSave: (event: FormEvent<HTMLFormElement>) => void;
   onDelete: () => void;
@@ -1767,7 +1785,7 @@ function ReminderDetailModal({
   return (
     <ModalBackdrop onClose={onClose}>
       <section className="log-modal reminder-detail-modal" role="dialog" aria-modal="true">
-        {owner ? (
+        {canManage ? (
           <form onSubmit={onSave}>
             {heading}
             <label>
@@ -1821,7 +1839,7 @@ function ReminderDetailModal({
 function UpcomingList({
   reminders,
   locale,
-  owner,
+  canManage,
   onOpen,
   onSelect,
   onComplete,
@@ -1830,7 +1848,7 @@ function UpcomingList({
 }: {
   reminders: Reminder[];
   locale: User["locale"];
-  owner: boolean;
+  canManage: boolean;
   onOpen: () => void;
   onSelect: (reminder: Reminder) => void;
   onComplete: (reminder: Reminder) => void;
@@ -1844,9 +1862,11 @@ function UpcomingList({
         <div>
           <h2>{t("Upcoming")}</h2>
         </div>
-        <button className="text-button" onClick={onOpen}>
-          {t("Manage reminders")} <Plus size={15} />
-        </button>
+        {canManage && (
+          <button className="text-button" onClick={onOpen}>
+            {t("Manage reminders")} <Plus size={15} />
+          </button>
+        )}
       </div>
       {reminders.length ? (
         <div className="upcoming-items">
@@ -1905,7 +1925,7 @@ function UpcomingList({
                 >
                   <Check size={13} />
                 </button>
-                {owner && (
+                {canManage && (
                   <button
                     className="more"
                     aria-label={`${t("Delete")} ${reminder.title}`}
@@ -2457,9 +2477,10 @@ function ManageModal({
   children,
   notes,
   inviteUrl,
-  owner,
+  canManage,
   onClose,
   onActivity,
+  onUpdateActivity,
   onArchive,
   onField,
   onReminder,
@@ -2475,9 +2496,10 @@ function ManageModal({
   children: Child[];
   notes: Note[];
   inviteUrl: string;
-  owner: boolean;
+  canManage: boolean;
   onClose: () => void;
   onActivity: (event: FormEvent<HTMLFormElement>) => void;
+  onUpdateActivity: (event: FormEvent<HTMLFormElement>) => void;
   onArchive: (id: string) => void;
   onField: (event: FormEvent<HTMLFormElement>) => void;
   onReminder: (event: FormEvent<HTMLFormElement>) => void;
@@ -2551,17 +2573,31 @@ function ManageModal({
               {fields}
               <button className="text-button">{t("Add field")}</button>
             </form>
-            {owner && (
+            {canManage && (
               <div className="note-list">
                 {activities.map((activity) => (
                   <article key={activity.id}>
-                    <strong>{t(activity.name)}</strong>
-                    <button
-                      className="text-button danger"
-                      onClick={() => onArchive(activity.id)}
-                    >
-                      {t("Remove activity")}
-                    </button>
+                    <form onSubmit={onUpdateActivity}>
+                      <input type="hidden" name="activityId" value={activity.id} />
+                      <label>
+                        {t("Name")}
+                        <input name="name" defaultValue={activity.name} required />
+                      </label>
+                      <label>
+                        {t("Color")}
+                        <input name="color" type="color" defaultValue={activity.color} />
+                      </label>
+                      <div className="modal-actions">
+                        <button className="text-button">{t("Save changes")}</button>
+                        <button
+                          className="text-button danger"
+                          type="button"
+                          onClick={() => onArchive(activity.id)}
+                        >
+                          {t("Remove activity")}
+                        </button>
+                      </div>
+                    </form>
                   </article>
                 ))}
               </div>
@@ -2744,7 +2780,7 @@ function ManageModal({
               </label>
               <button className="text-button">{t("Create child")}</button>
             </form>
-            {owner && (
+            {canManage && (
               <p className="time-hint">
                 {t("Use Invite caregiver from the right panel to add people.")}
               </p>
