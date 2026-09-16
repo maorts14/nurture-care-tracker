@@ -2406,9 +2406,15 @@ nav em {
   border-bottom: 1px solid #eee8e0;
 }
 .analytics-history-day time {
+  display: grid;
+  gap: 2px;
   color: #6f6760;
   font-size: 12px;
   font-weight: 600;
+  line-height: 1.2;
+}
+.analytics-history-day time span {
+  white-space: nowrap;
 }
 .analytics-history-day .metric-grid {
   gap: 10px;
@@ -2700,8 +2706,26 @@ nav em {
     font-size: 18px;
   }
   .analytics-history-day {
-    grid-template-columns: 1fr;
-    gap: 4px;
+    grid-template-columns: 60px minmax(0, 1fr);
+    gap: 0;
+    align-items: center;
+  }
+  .analytics-history-day time {
+    font-size: 11px;
+  }
+  .analytics-history-day .analytics-feeding-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .analytics-history-day .metric-grid p {
+    font-size: 11px;
+    line-height: 1.15;
+  }
+  .analytics-history-day .metric-grid strong {
+    font-size: 16px;
+  }
+  .analytics-history-day .metric-grid strong bdi {
+    white-space: nowrap;
   }
   .analytics-history-list {
     max-height: 250px;

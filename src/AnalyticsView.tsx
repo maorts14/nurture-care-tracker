@@ -129,9 +129,13 @@ export function AnalyticsView({
   );
   const periodLabel =
     period === "calendar_day" ? t("Today, from 00:00") : t("Last 24 hours");
-  const dateFormatter = new Intl.DateTimeFormat(
+  const weekdayFormatter = new Intl.DateTimeFormat(
     locale === "he" ? "he-IL" : "en-US",
-    { weekday: "short", month: "short", day: "numeric" },
+    { weekday: "short" },
+  );
+  const calendarDateFormatter = new Intl.DateTimeFormat(
+    locale === "he" ? "he-IL" : "en-US",
+    { month: "short", day: "numeric" },
   );
   const openSettings = () => {
     setSettingsActivityIds(selectedActivityIds);
@@ -282,9 +286,16 @@ export function AnalyticsView({
                     stat.history.map((day) => (
                       <section className="analytics-history-day" key={day.date}>
                         <time dateTime={day.date}>
-                          {dateFormatter.format(
-                            new Date(`${day.date}T12:00:00`),
-                          )}
+                          <span>
+                            {weekdayFormatter.format(
+                              new Date(`${day.date}T12:00:00`),
+                            )}
+                          </span>
+                          <span>
+                            {calendarDateFormatter.format(
+                              new Date(`${day.date}T12:00:00`),
+                            )}
+                          </span>
                         </time>
                         <MetricsGrid
                           metrics={day}
