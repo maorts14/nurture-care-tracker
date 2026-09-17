@@ -234,6 +234,7 @@ body {
   .marketing-product-carousel { width: min(100%, 300px); justify-self: center; }
   .marketing-carousel-frame { aspect-ratio: 390 / 560; border-radius: 22px; }
   .marketing-carousel-track { touch-action: pan-y; }
+  .marketing-carousel-slide[data-screen="log-feeding"] img { object-position: center bottom; }
   .marketing-carousel-arrow { display: none; }
   .marketing-section { padding: 70px 24px; }
   .marketing-lede { margin: 20px 0 0; }

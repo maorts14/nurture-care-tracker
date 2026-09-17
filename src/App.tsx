@@ -485,9 +485,7 @@ export default function App() {
       "/": locale === "he" ? "Feedme — טיפול משותף" : "Feedme — shared care",
       "/about": locale === "he" ? "אודות Feedme" : "About Feedme",
       "/privacy": locale === "he" ? "פרטיות | Feedme" : "Privacy | Feedme",
-      "/cookies": locale === "he" ? "עוגיות | Feedme" : "Cookies | Feedme",
       "/terms": locale === "he" ? "תנאים ובטיחות | Feedme" : "Terms & safety | Feedme",
-      "/security": locale === "he" ? "אבטחה | Feedme" : "Security | Feedme",
       "/accessibility": locale === "he" ? "נגישות | Feedme" : "Accessibility | Feedme",
       "/contact": locale === "he" ? "יצירת קשר | Feedme" : "Contact | Feedme",
       "/account/privacy": locale === "he" ? "פרטיות ונתונים | Feedme" : "Privacy & data | Feedme",
@@ -1006,9 +1004,9 @@ export default function App() {
     routePath === "/" ? "landing" :
     routePath === "/about" ? "about" :
     routePath === "/privacy" ? "privacy" :
-    routePath === "/cookies" ? "cookies" :
+    routePath === "/cookies" ? "privacy" :
     routePath === "/terms" ? "terms" :
-    routePath === "/security" ? "security" :
+    routePath === "/security" ? "privacy" :
     routePath === "/accessibility" ? "accessibility" :
     routePath === "/contact" ? "contact" : null;
   if (publicPage)

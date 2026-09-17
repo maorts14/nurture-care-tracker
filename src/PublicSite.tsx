@@ -1,10 +1,10 @@
-import { ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronRight, Clock3, Cookie, Eye, FileText, HeartPulse, LockKeyhole, LogOut, Mail, Settings, ShieldCheck, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronRight, Clock3, Eye, FileText, HeartPulse, LockKeyhole, LogOut, Mail, Settings, ShieldCheck, Users } from "lucide-react";
 import { useRef, useState } from "react";
 import { FeedmeBrand } from "./components/FeedmeBrand";
 import { LanguageControl } from "./components/LanguageControl";
 import { LanguagePicker } from "./components/LanguagePicker";
 
-export type PublicPage = "landing" | "about" | "privacy" | "cookies" | "terms" | "security" | "accessibility" | "contact";
+export type PublicPage = "landing" | "about" | "privacy" | "terms" | "accessibility" | "contact";
 type PublicLocale = "en" | "he";
 
 type PublicSiteProps = {
@@ -38,16 +38,8 @@ const pageByPath: Record<Exclude<PublicPage, "landing">, { eyebrow: string; titl
       ["What the service uses", "Account details, child profiles, care events, notes, reminders and service-security information are used to operate the family space."],
       ["Your choices", "The product will provide a clear path to view policy information, export data, manage preferences and request account deletion."],
       ["Sensitive information", "Custom activities can contain sensitive details. Feedme will explain the applicable protections and retention rules in the final policy."],
-    ],
-  },
-  cookies: {
-    eyebrow: "TRUST CENTER",
-    title: "Cookies and similar technology.",
-    intro: "Feedme needs a small number of essential technologies to keep a signed-in session secure. Any optional analytics or advertising technology will be explained and controlled here before launch.",
-    sections: [
-      ["Essential", "Session and security cookies help keep an authenticated family space available and protected."],
-      ["Optional", "Optional measurement or marketing tools must not run until the user has made a choice where consent is required."],
-      ["Your preferences", "Signed-in users will find their cookie choices in Privacy & data. This public page will always explain what those choices mean."],
+      ["Cookies and similar technology", "Feedme uses a small number of essential session and security cookies to keep a signed-in family space available and protected. Optional measurement or marketing technology will not run until a user has made a choice where consent is required. Signed-in users will be able to manage those preferences in Privacy & data."],
+      ["Security", "Secure sign-in, role-based access, encrypted HTTPS connections and operational safeguards help protect family information. The launch work also includes encrypted backup, recovery and deletion procedures. Use the contact page to report a security concern."],
     ],
   },
   terms: {
@@ -58,17 +50,6 @@ const pageByPath: Record<Exclude<PublicPage, "landing">, { eyebrow: string; titl
       ["Using Feedme", "Account holders are responsible for the people they invite and the information they add to a shared child space."],
       ["Care, not clinical advice", "Feedme records information and reminders. It does not diagnose, prescribe, or replace a clinician or emergency service."],
       ["Shared access", "Family-space roles control who can view, write, manage care and change ownership-related settings."],
-    ],
-  },
-  security: {
-    eyebrow: "TRUST CENTER",
-    title: "Security is part of care.",
-    intro: "Feedme is being prepared with a practical, transparent approach to protecting family information. This page will be kept accurate as safeguards evolve.",
-    sections: [
-      ["Account protection", "Secure sign-in and role-based access help make sure the right people can reach a child’s care space."],
-      ["Transport and infrastructure", "The production service uses encrypted HTTPS connections and managed operational safeguards."],
-      ["Backups and deletion", "The public launch work includes encrypted backup, recovery and deletion procedures designed around family data."],
-      ["Report a concern", "Use the contact page to report a security concern. A dedicated security contact will be published before launch."],
     ],
   },
   accessibility: {
@@ -113,16 +94,8 @@ const hebrewPageByPath: typeof pageByPath = {
       ["באיזה מידע השירות משתמש", "פרטי חשבון, פרופילי ילדים, אירועי טיפול, הערות, תזכורות ומידע לצורכי אבטחת השירות משמשים להפעלת מרחב המשפחה."],
       ["הבחירות שלכם", "המוצר יספק דרך ברורה לקריאת המדיניות, ייצוא מידע, ניהול העדפות ובקשת מחיקת חשבון."],
       ["מידע רגיש", "פעילויות מותאמות אישית עשויות לכלול פרטים רגישים. Feedme תסביר את ההגנות וכללי השמירה הרלוונטיים במדיניות הסופית."],
-    ],
-  },
-  cookies: {
-    eyebrow: "מרכז האמון",
-    title: "עוגיות וטכנולוגיות דומות.",
-    intro: "Feedme זקוקה למספר קטן של טכנולוגיות חיוניות כדי לשמור על הפעלה מאובטחת של התחברות. כל אנליטיקה או פרסום אופציונליים יוסברו ויישלטו כאן לפני ההשקה.",
-    sections: [
-      ["חיוניות", "עוגיות הפעלה ואבטחה עוזרות לשמור על מרחב המשפחה המחובר זמין ומוגן."],
-      ["אופציונליות", "כלי מדידה או שיווק אופציונליים לא יופעלו לפני שהמשתמש בחר בכך, במקומות שבהם נדרשת הסכמה."],
-      ["ההעדפות שלכם", "משתמשים מחוברים ימצאו את בחירות העוגיות שלהם באזור פרטיות ומידע. הדף הציבורי יסביר תמיד מה משמעות הבחירות."],
+      ["עוגיות וטכנולוגיות דומות", "Feedme משתמשת במספר קטן של עוגיות הפעלה ואבטחה חיוניות כדי לשמור על מרחב המשפחה המחובר זמין ומוגן. כלי מדידה או שיווק אופציונליים לא יופעלו לפני שהמשתמש בחר בכך, במקומות שבהם נדרשת הסכמה. משתמשים מחוברים יוכלו לנהל את ההעדפות האלה בפרטיות ונתונים."],
+      ["אבטחה", "התחברות מאובטחת, גישה מבוססת תפקידים, חיבורי HTTPS מוצפנים והגנות תפעוליות עוזרים להגן על מידע משפחתי. עבודת ההשקה כוללת גם הליכי גיבוי, שחזור ומחיקה מוצפנים. אפשר להשתמש בדף יצירת הקשר כדי לדווח על נושא אבטחה."],
     ],
   },
   terms: {
@@ -133,17 +106,6 @@ const hebrewPageByPath: typeof pageByPath = {
       ["שימוש ב-Feedme", "בעלי חשבון אחראים לאנשים שהם מזמינים ולמידע שהם מוסיפים למרחב ילד משותף."],
       ["טיפול, לא ייעוץ רפואי", "Feedme מתעדת מידע ותזכורות. היא אינה מאבחנת, רושמת טיפול או מחליפה רופא או שירות חירום."],
       ["גישה משותפת", "תפקידים במרחב המשפחה קובעים מי יכול לצפות, לתעד, לנהל טיפול ולשנות הגדרות הקשורות לבעלות."],
-    ],
-  },
-  security: {
-    eyebrow: "מרכז האמון",
-    title: "אבטחה היא חלק מהטיפול.",
-    intro: "Feedme נבנית בגישה מעשית ושקופה להגנה על מידע משפחתי. הדף הזה יתעדכן ככל שההגנות יתפתחו.",
-    sections: [
-      ["הגנת חשבון", "התחברות מאובטחת וגישה מבוססת תפקידים עוזרות להבטיח שרק האנשים הנכונים יגיעו למרחב הטיפול של הילד."],
-      ["תקשורת ותשתית", "שירות הייצור משתמש בחיבורי HTTPS מוצפנים ובהגנות תפעוליות מנוהלות."],
-      ["גיבויים ומחיקה", "עבודת ההשקה לציבור כוללת תהליכי גיבוי מוצפן, שחזור ומחיקה המתוכננים סביב מידע משפחתי."],
-      ["דיווח על בעיה", "אפשר להשתמש בדף יצירת קשר כדי לדווח על בעיית אבטחה. כתובת אבטחה ייעודית תפורסם לפני ההשקה."],
     ],
   },
   accessibility: {
@@ -173,18 +135,14 @@ const trustLinks = (locale: PublicLocale) =>
     ? [
         ["אודות", "/about"],
         ["פרטיות", "/privacy"],
-        ["עוגיות", "/cookies"],
         ["תנאים ובטיחות", "/terms"],
-        ["אבטחה", "/security"],
         ["נגישות", "/accessibility"],
         ["יצירת קשר", "/contact"],
       ]
     : [
         ["About", "/about"],
         ["Privacy", "/privacy"],
-        ["Cookies", "/cookies"],
         ["Terms & safety", "/terms"],
-        ["Security", "/security"],
         ["Accessibility", "/accessibility"],
         ["Contact", "/contact"],
       ]) as Array<[string, string]>;
@@ -192,6 +150,7 @@ const trustLinks = (locale: PublicLocale) =>
 const productScreens = [
   { id: "timeline", en: "Feedme's shared care timeline", he: "ציר הזמן המשותף של Feedme" },
   { id: "timeline-history", en: "Feedme care history log", he: "היסטוריית הטיפול של Feedme" },
+  { id: "log-feeding", en: "Log a feeding in Feedme", he: "תיעוד האכלה ב-Feedme" },
   { id: "insights", en: "Feedme care insights", he: "תובנות הטיפול של Feedme" },
   { id: "caregivers", en: "Feedme caregiver management", he: "ניהול המטפלים של Feedme" },
 ] as const;
@@ -245,7 +204,7 @@ function ProductCarousel({ locale }: { locale: PublicLocale }) {
             selectSlide(activeIndex + (isNextSlide ? 1 : -1));
           }}
         >
-          {productScreens.map((screen, index) => <div className={`marketing-carousel-slide${index === activeIndex ? " active" : ""}`} key={screen.id}>
+          {productScreens.map((screen, index) => <div className={`marketing-carousel-slide${index === activeIndex ? " active" : ""}`} data-screen={screen.id} key={screen.id}>
             {Math.abs(index - activeIndex) <= 1 && <picture>
               <source media="(min-width: 761px)" srcSet={`/product-screenshots/${screen.id}-${screenshotLocale}-desktop.png`} />
               <img loading={index === activeIndex ? "eager" : "lazy"} src={`/product-screenshots/${screen.id}-${screenshotLocale}-mobile.png`} alt={he ? screen.he : screen.en} />
@@ -416,6 +375,6 @@ export function HelpLegalPanel({ locale, onNavigate, onClose }: { locale: Public
   return <div className="help-legal-panel" dir={he ? "rtl" : "ltr"}>
     <div><div><p className="marketing-eyebrow">{he ? "עזרה ומשפטי" : "HELP & LEGAL"}</p><h2>{he ? "עזרה למרחב המשפחתי שלכם." : "Help for your family space."}</h2></div><button className="icon-button" onClick={onClose} aria-label={he ? "סגירת עזרה ומשפטי" : "Close help and legal"}>×</button></div>
     <p>{he ? "מידע על המוצר ודפים משפטיים זמינים מכל מקום ב-Feedme." : "Reach the product information and legal pages from anywhere in Feedme."}</p>
-    <div className="help-legal-links"><button onClick={() => onNavigate("/contact")}><Users size={18} /> {he ? "יצירת קשר ותמיכה" : "Contact & support"}<ChevronRight size={17} /></button>{trustLinks(locale).map(([label, path]) => <button key={path} onClick={() => onNavigate(path)}>{path === "/privacy" ? <LockKeyhole size={18} /> : path === "/cookies" ? <Cookie size={18} /> : path === "/terms" ? <FileText size={18} /> : path === "/accessibility" ? <Eye size={18} /> : <ShieldCheck size={18} />} {label}<ChevronRight size={17} /></button>)}</div>
+    <div className="help-legal-links"><button onClick={() => onNavigate("/contact")}><Users size={18} /> {he ? "יצירת קשר ותמיכה" : "Contact & support"}<ChevronRight size={17} /></button>{trustLinks(locale).map(([label, path]) => <button key={path} onClick={() => onNavigate(path)}>{path === "/privacy" ? <LockKeyhole size={18} /> : path === "/terms" ? <FileText size={18} /> : path === "/accessibility" ? <Eye size={18} /> : <ShieldCheck size={18} />} {label}<ChevronRight size={17} /></button>)}</div>
   </div>;
 }

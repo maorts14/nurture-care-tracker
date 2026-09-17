@@ -71,13 +71,38 @@ async function evaluate(connection, expression) {
   return result.result.value;
 }
 
-async function capture(connection, fileName, scrollY = 0) {
-  await wait(1200);
+async function waitForApp(connection) {
   for (let attempt = 0; attempt < 40; attempt += 1) {
     const appText = await evaluate(connection, "document.body.innerText");
-    if (appText.includes("Leo")) break;
+    if (appText.includes("Leo")) return;
     await wait(200);
   }
+  throw new Error("Feedme did not finish loading for screenshot capture");
+}
+
+async function openFeedingLog(connection) {
+  await waitForApp(connection);
+  const opened = await evaluate(connection, `(() => {
+    const button = [...document.querySelectorAll('button')].find((item) =>
+      item.textContent?.includes('Log care') || item.textContent?.includes('תיעוד טיפול'),
+    );
+    button?.click();
+    return Boolean(button);
+  })()`);
+  if (!opened) throw new Error("Could not open the quick log form");
+  await wait(250);
+  const feedingSelected = await evaluate(connection, `(() => {
+    const button = [...document.querySelectorAll('.activity-picker button')].find((item) =>
+      item.textContent?.includes('Feeding') || item.textContent?.includes('האכלה'),
+    );
+    button?.click();
+    return Boolean(button);
+  })()`);
+  if (!feedingSelected) throw new Error("Could not select Feeding in the quick log form");
+}
+
+async function capture(connection, fileName, scrollY = 0) {
+  await waitForApp(connection);
   await evaluate(connection, `
     document.documentElement.classList.add("marketing-screenshot-capture");
     const style = document.createElement("style");
@@ -147,13 +172,15 @@ try {
         deviceScaleFactor: 1,
         mobile: false,
       });
-      for (const [name, path, scrollY] of [
+      for (const [name, path, scrollY, beforeCapture] of [
         ["timeline", `/children/${childId}`, 0],
         ["timeline-history", `/children/${childId}`, 380],
+        ["log-feeding", `/children/${childId}`, 0, openFeedingLog],
         ["insights", `/children/${childId}/insights`, 0],
         ["caregivers", `/children/${childId}/caregivers`, 0],
       ]) {
         await connection.command("Page.navigate", { url: `${baseUrl}${path}` });
+        if (beforeCapture) await beforeCapture(connection);
         await capture(connection, `${name}-${locale}-${viewport}`, scrollY);
       }
     }
