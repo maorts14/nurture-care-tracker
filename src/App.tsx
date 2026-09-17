@@ -1,6 +1,7 @@
 import { FormEvent, Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { AnalyticsView } from "./AnalyticsView";
+import { AccountDataPage } from "./AccountDataPage";
 import { CaregiversPage } from "./CaregiversPage";
 import { NotesPage } from "./NotesPage";
 import { CommentsPage } from "./CommentsPage";
@@ -9,6 +10,7 @@ import { LanguageControl } from "./components/LanguageControl";
 import { LanguagePicker } from "./components/LanguagePicker";
 import { ModalBackdrop } from "./components/ModalBackdrop";
 import { FeedmeBrand } from "./components/FeedmeBrand";
+import { HelpLegalPanel, PublicSite, type PublicPage } from "./PublicSite";
 import { ReminderScheduleFields } from "./components/ReminderScheduleFields";
 import { SidebarAccount } from "./components/SidebarAccount";
 import { TimezoneSelect } from "./components/TimezoneSelect";
@@ -23,6 +25,7 @@ import {
   Droplets,
   FileDown,
   HeartPulse,
+  CircleHelp,
   Menu,
   MessageCircle,
   MoreHorizontal,
@@ -62,7 +65,7 @@ type Event = {
   kind: Activity["kind"];
   color: string;
   created_by: string;
-  created_by_id: string;
+  created_by_id: string | null;
   feeding_portions: FeedingPortion[];
   comment_count?: number;
   first_comment?: string | null;
@@ -263,6 +266,7 @@ export default function App() {
   const [editingLog, setEditingLog] = useState<Event | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
+  const [helpLegalOpen, setHelpLegalOpen] = useState(false);
   const [timelineActivityId, setTimelineActivityId] = useState<string | null>(null);
   const [timelineSlideDirection, setTimelineSlideDirection] = useState<
     "from-left" | "from-right" | null
@@ -385,9 +389,19 @@ export default function App() {
     [lastFeed?.id, feedReminder?.id],
   );
   const navigate = (path: string, replace = false) => {
-    if (location.pathname !== path)
-      history[replace ? "replaceState" : "pushState"]({}, "", path);
-    setRoutePath(path);
+    const destination = new URL(path, window.location.origin);
+    const current = `${location.pathname}${location.search}${location.hash}`;
+    const next = `${destination.pathname}${destination.search}${destination.hash}`;
+    if (current !== next)
+      history[replace ? "replaceState" : "pushState"]({}, "", next);
+    setRoutePath(destination.pathname);
+    if (destination.hash) {
+      requestAnimationFrame(() =>
+        document
+          .getElementById(destination.hash.slice(1))
+          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      );
+    }
   };
   const load = async () => {
     const me = await api<User>("/api/me");
@@ -433,11 +447,6 @@ export default function App() {
   }, []);
   useEffect(() => {
     if (!user) return;
-    if (routePath === "/") {
-      history.replaceState({}, "", "/children");
-      setRoutePath("/children");
-      return;
-    }
     const match = routePath.match(/^\/children\/([^/]+)(?:\/(?:insights|caregivers))?$/);
     if (match) {
       const routeChild = children.find((item) => item.id === match[1]);
@@ -471,6 +480,20 @@ export default function App() {
         if (user) setError(cause.message);
       });
   }, [user?.id, locale]);
+  useEffect(() => {
+    const titles: Record<string, string> = {
+      "/": locale === "he" ? "Feedme — טיפול משותף" : "Feedme — shared care",
+      "/about": locale === "he" ? "אודות Feedme" : "About Feedme",
+      "/privacy": locale === "he" ? "פרטיות | Feedme" : "Privacy | Feedme",
+      "/cookies": locale === "he" ? "עוגיות | Feedme" : "Cookies | Feedme",
+      "/terms": locale === "he" ? "תנאים ובטיחות | Feedme" : "Terms & safety | Feedme",
+      "/security": locale === "he" ? "אבטחה | Feedme" : "Security | Feedme",
+      "/accessibility": locale === "he" ? "נגישות | Feedme" : "Accessibility | Feedme",
+      "/contact": locale === "he" ? "יצירת קשר | Feedme" : "Contact | Feedme",
+      "/account/privacy": locale === "he" ? "פרטיות ונתונים | Feedme" : "Privacy & data | Feedme",
+    };
+    document.title = titles[routePath] ?? "Feedme — shared care";
+  }, [routePath, locale]);
   const clearInvite = () => {
     const url = new URL(location.href);
     url.searchParams.delete("invite");
@@ -587,6 +610,33 @@ export default function App() {
       body: JSON.stringify({ name }),
     });
     await load();
+  }
+  async function downloadAccountData() {
+    const response = await fetch("/api/me/export", { credentials: "include" });
+    if (!response.ok) {
+      throw new Error(
+        (await response.json().catch(() => ({ error: "Request failed" }))).error,
+      );
+    }
+    const downloadUrl = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = "feedme-account-data.json";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(downloadUrl);
+  }
+  async function deleteAccount(emailConfirmation: string) {
+    await api("/api/me", {
+      method: "DELETE",
+      body: JSON.stringify({ emailConfirmation }),
+    });
+    setUser(null);
+    setChildren([]);
+    setChild(null);
+    setDash(null);
+    navigate("/", true);
   }
   async function deleteChild(item: Child) {
     if (
@@ -952,8 +1002,37 @@ export default function App() {
     setHomeOpen(false);
     navigate("/", true);
   };
+  const publicPage: PublicPage | null =
+    routePath === "/" ? "landing" :
+    routePath === "/about" ? "about" :
+    routePath === "/privacy" ? "privacy" :
+    routePath === "/cookies" ? "cookies" :
+    routePath === "/terms" ? "terms" :
+    routePath === "/security" ? "security" :
+    routePath === "/accessibility" ? "accessibility" :
+    routePath === "/contact" ? "contact" : null;
+  if (publicPage)
+    return (
+      <PublicSite
+        page={publicPage}
+        locale={locale}
+        onLocale={setLocale}
+        onNavigate={navigate}
+        onSignIn={() => navigate(user ? "/children" : "/sign-in")}
+      />
+    );
   if (loading)
     return <div className="loading-screen">{t("Loading Feedme…")}</div>;
+  if (routePath === "/account/privacy" && user)
+    return (
+      <AccountDataPage
+        locale={user.locale}
+        email={user.email}
+        onBack={() => navigate("/children")}
+        onDownload={downloadAccountData}
+        onDelete={deleteAccount}
+      />
+    );
   if (!user)
     return (
       <div className="sign-in-shell">
@@ -1069,6 +1148,7 @@ export default function App() {
           onLocale={setLocale}
           onSignOut={signOut}
           onHome={() => navigate("/children")}
+          onPrivacyData={() => navigate("/account/privacy")}
         />
         {invitePreview && (
           <InvitationPreviewModal
@@ -1095,6 +1175,7 @@ export default function App() {
         onLocale={setLocale}
         onSignOut={signOut}
         onHome={() => navigate("/children")}
+        onPrivacyData={() => navigate("/account/privacy")}
       />
     );
   if (!dash)
@@ -1207,6 +1288,10 @@ export default function App() {
             <Users size={18} />
             {t("Children")}
           </button>
+          <button onClick={() => setHelpLegalOpen(true)}>
+            <CircleHelp size={18} />
+            {t("Help & legal")}
+          </button>
           <LanguageControl
             locale={user.locale}
             label={t("Language")}
@@ -1219,6 +1304,8 @@ export default function App() {
           <SidebarAccount
             displayName={user.display_name}
             detail={t(dash.role === "care_manager" ? "Care manager" : dash.role)}
+            privacyDataLabel={t("Privacy & data")}
+            onPrivacyData={() => navigate("/account/privacy")}
             signOutLabel={t("Sign out")}
             onSignOut={signOut}
           />
@@ -1264,6 +1351,14 @@ export default function App() {
             </h1>
           </div>
           <div className="top-actions">
+            <button
+              className="icon-button"
+              title={t("Help & legal")}
+              aria-label={t("Help & legal")}
+              onClick={() => setHelpLegalOpen(true)}
+            >
+              <CircleHelp size={18} />
+            </button>
             <button
               className="icon-button"
               title={t("Export CSV")}
@@ -1554,6 +1649,18 @@ export default function App() {
           onClose={() => setLanguageOpen(false)}
           onSelect={setLocale}
         />
+      )}
+      {helpLegalOpen && (
+        <ModalBackdrop onClose={() => setHelpLegalOpen(false)}>
+          <HelpLegalPanel
+            locale={locale}
+            onClose={() => setHelpLegalOpen(false)}
+            onNavigate={(path) => {
+              setHelpLegalOpen(false);
+              navigate(path);
+            }}
+          />
+        </ModalBackdrop>
       )}
       {selectedReminder && (
         <ReminderDetailModal
@@ -2203,11 +2310,13 @@ function HomeSidebar({
   onHome,
   onOpenLanguage,
   onSignOut,
+  onPrivacyData,
 }: {
   user: User;
   onHome: () => void;
   onOpenLanguage: () => void;
   onSignOut: () => void;
+  onPrivacyData: () => void;
 }) {
   const [open, setOpen] = useState(false);
   usePageScrollLock(open);
@@ -2241,6 +2350,11 @@ function HomeSidebar({
           />
           <SidebarAccount
             displayName={user.display_name}
+            privacyDataLabel={t("Privacy & data")}
+            onPrivacyData={() => {
+              close();
+              onPrivacyData();
+            }}
             signOutLabel={t("Sign out")}
             onSignOut={onSignOut}
           />
@@ -2263,6 +2377,7 @@ function Home({
   onLocale,
   onSignOut,
   onHome,
+  onPrivacyData,
 }: {
   user: User;
   error: string;
@@ -2276,6 +2391,7 @@ function Home({
   onLocale: (locale: User["locale"]) => void;
   onSignOut: () => void;
   onHome: () => void;
+  onPrivacyData: () => void;
 }) {
   const t = (text: string) => translate(user.locale, text);
   return (
@@ -2285,6 +2401,7 @@ function Home({
         onHome={onHome}
         onOpenLanguage={onOpenLanguage}
         onSignOut={onSignOut}
+        onPrivacyData={onPrivacyData}
       />
       <section className="empty-home">
         <p className="eyebrow">{t("YOUR FAMILY SPACE")}</p>
@@ -2339,6 +2456,7 @@ function ChildrenHome({
   onLocale,
   onSignOut,
   onHome,
+  onPrivacyData,
 }: {
   user: User;
   children: Child[];
@@ -2356,6 +2474,7 @@ function ChildrenHome({
   onLocale: (locale: User["locale"]) => void;
   onSignOut: () => void;
   onHome: () => void;
+  onPrivacyData: () => void;
 }) {
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   const t = (text: string) => translate(user.locale, text);
@@ -2366,6 +2485,7 @@ function ChildrenHome({
         onHome={onHome}
         onOpenLanguage={onOpenLanguage}
         onSignOut={onSignOut}
+        onPrivacyData={onPrivacyData}
       />
       <section className="children-home">
         <div className="children-home-heading">
