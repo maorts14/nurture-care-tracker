@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, ChevronRight, Clock3, Cookie, Eye, FileText, HeartPulse, LockKeyhole, ShieldCheck, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronRight, Clock3, Cookie, Eye, FileText, HeartPulse, LockKeyhole, Mail, ShieldCheck, Users } from "lucide-react";
 import { useRef, useState } from "react";
 import { FeedmeBrand } from "./components/FeedmeBrand";
 import { LanguageControl } from "./components/LanguageControl";
@@ -81,7 +81,7 @@ const pageByPath: Record<Exclude<PublicPage, "landing">, { eyebrow: string; titl
   contact: {
     eyebrow: "CONTACT FEEDME",
     title: "Questions, support, or a privacy request?",
-    intro: "A public support and privacy contact channel will be published before launch. Until then, this page establishes where that help will live.",
+    intro: "You can contact us about anything.",
     sections: [
       ["Product support", "Get help using shared timelines, activities, reminders, child spaces and caregiver roles."],
       ["Privacy requests", "Request access, export, correction or deletion through the future Privacy & data area or the published privacy contact."],
@@ -156,7 +156,7 @@ const hebrewPageByPath: typeof pageByPath = {
   contact: {
     eyebrow: "יצירת קשר עם FEEDME",
     title: "שאלות, תמיכה או בקשת פרטיות?",
-    intro: "ערוץ ציבורי לתמיכה ולפרטיות יפורסם לפני ההשקה. בינתיים, דף זה מבהיר היכן העזרה הזאת תהיה זמינה.",
+    intro: "אתם יכולים לפנות אלינו לכל נושא.",
     sections: [
       ["תמיכה במוצר", "עזרה בשימוש בציר זמן משותף, פעילויות, תזכורות, מרחבי ילדים ותפקידי מטפלים."],
       ["בקשות פרטיות", "בקשת גישה, ייצוא, תיקון או מחיקה תתאפשר מאזור פרטיות ומידע העתידי או דרך איש הקשר לפרטיות שיפורסם."],
@@ -271,8 +271,8 @@ function Landing({ locale, onNavigate, onSignIn }: Pick<PublicSiteProps, "locale
         <h1>{he ? "כל רגע קטן של טיפול, מחובר יחד." : "Every small care moment, held together."}</h1>
         <p>{he ? "ציר זמן משותף אחד להאכלות, החלפות חיתול, הערות, תזכורות ולכל מי שמטפל בילד שלכם." : "One shared timeline for feeds, diaper changes, notes, reminders and the people who care for your child."}</p>
         <div className="marketing-actions">
-          <button className="marketing-cta" onClick={onSignIn}>{he ? "התחלת מרחב משפחתי" : "Start your family space"} {he ? <ArrowLeft size={17} /> : <ArrowRight size={17} />}</button>
-          <button className="marketing-secondary" onClick={() => onNavigate("/#how-it-works")}>{he ? "לגלות איך זה עובד" : "See how it works"}</button>
+          <button className="marketing-cta" onClick={onSignIn}>{he ? "כנס למרחב המשפחתי" : "Join your care space"} {he ? <ArrowLeft size={17} /> : <ArrowRight size={17} />}</button>
+          <button className="marketing-secondary" onClick={() => onNavigate("/#how-it-works")}>{he ? "איך זה עובד" : "How it works"}</button>
         </div>
       </div>
       <ProductCarousel locale={locale} />
@@ -293,6 +293,7 @@ function Landing({ locale, onNavigate, onSignIn }: Pick<PublicSiteProps, "locale
 
 function LegalPage({ page, locale }: Pick<PublicSiteProps, "page" | "locale">) {
   const content = (locale === "he" ? hebrewPageByPath : pageByPath)[page as Exclude<PublicPage, "landing">];
+  if (page === "contact") return <ContactPage content={content} locale={locale} />;
   return <>
     <section className="legal-hero"><p className="marketing-eyebrow">{content.eyebrow}</p><h1>{content.title}</h1><p>{content.intro}</p></section>
     <main className="legal-content">
@@ -300,6 +301,31 @@ function LegalPage({ page, locale }: Pick<PublicSiteProps, "page" | "locale">) {
       <article>{content.sections.map(([heading, body]) => <section id={heading.toLowerCase().replaceAll(" ", "-")} key={heading}><h2>{heading}</h2><p>{body}</p></section>)}<div className="legal-callout"><ShieldCheck size={20} /><p>{locale === "he" ? "לפני ההשקה, מדיניות סופית, פרטי קשר ותאריכי תחילה יחליפו את טיוטות הדפים הציבוריים המוכנות האלה." : "Before launch, final policies, contact details and effective dates will replace these prepared public-page drafts."}</p></div></article>
     </main>
   </>;
+}
+
+function ContactPage({ content, locale }: { content: (typeof pageByPath)["contact"]; locale: PublicLocale }) {
+  const he = locale === "he";
+  const whatsappMessage = he ? "היי, יש לי שאלה לגבי Feedme" : "Hi, I have a question about Feedme";
+  return <>
+    <section className="legal-hero"><p className="marketing-eyebrow">{content.eyebrow}</p><h1>{content.title}</h1><p>{content.intro}</p></section>
+    <main className="contact-content">
+      <a className="contact-action" href="mailto:maorts14@gmail.com">
+        <Mail aria-hidden="true" />
+        <span><small>{he ? "אימייל" : "Email"}</small><strong dir="ltr">maorts14@gmail.com</strong></span>
+      </a>
+      <a className="contact-action contact-whatsapp" href={`https://wa.me/972503329996?text=${encodeURIComponent(whatsappMessage)}`} target="_blank" rel="noreferrer">
+        <WhatsAppIcon />
+        <span><small>WhatsApp</small><strong dir="ltr">+972 50 332 9996</strong></span>
+      </a>
+    </main>
+  </>;
+}
+
+function WhatsAppIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none">
+    <path fill="currentColor" d="M12 2a9.8 9.8 0 0 0-8.37 14.9L2.5 21.5l4.75-1.25A9.8 9.8 0 1 0 12 2Z" />
+    <path fill="#fff" d="M16.88 14.2c-.27-.14-1.6-.79-1.84-.88-.25-.1-.43-.14-.61.14-.18.27-.7.88-.86 1.06-.16.18-.32.2-.59.07a7.36 7.36 0 0 1-2.16-1.33 8.1 8.1 0 0 1-1.5-1.87c-.16-.27-.02-.42.12-.56.12-.12.27-.32.41-.48.14-.16.18-.27.27-.45.1-.18.05-.34-.02-.48-.07-.14-.61-1.47-.84-2.01-.22-.53-.45-.46-.61-.47h-.52c-.18 0-.48.07-.73.34-.25.27-.96.94-.96 2.29s.98 2.66 1.11 2.84c.14.18 1.93 2.95 4.68 4.14.65.28 1.16.45 1.56.58.66.21 1.26.18 1.74.11.53-.08 1.6-.65 1.83-1.28.23-.63.23-1.17.16-1.28-.07-.11-.25-.18-.52-.32Z" />
+  </svg>;
 }
 
 export function PublicSite({ page, locale, onLocale, onNavigate, onSignIn }: PublicSiteProps) {

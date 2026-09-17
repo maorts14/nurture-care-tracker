@@ -177,6 +177,15 @@ body {
 .legal-content article p { margin: 0; color: #655e56; line-height: 1.75; }
 .legal-callout { display: flex; gap: 12px; padding: 18px; border-radius: 14px; background: #f2eee7; color: #514a43; }
 .legal-callout svg { flex: none; color: #e95943; }
+.contact-content { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 920px; margin: 0 auto; padding: clamp(48px, 7vw, 90px) 24px clamp(76px, 11vw, 140px); }
+.contact-action { display: flex; align-items: center; gap: 15px; min-height: 104px; padding: 20px; color: #28231f; text-decoration: none; }
+.contact-action + .contact-action { border-inline-start: 1px solid #e2dbd1; }
+.contact-action > svg { width: 25px; height: 25px; color: #e95943; }
+.contact-whatsapp > svg { color: #23a559; }
+.contact-action span { display: grid; gap: 3px; }
+.contact-action small { color: #83796f; font: 11px "DM Mono", monospace; }
+.contact-action strong { font-size: 17px; letter-spacing: -.4px; }
+.contact-action:hover { background: #f5f0e9; }
 .help-legal-panel { width: min(520px, calc(100vw - 32px)); padding: 30px; border: 1px solid #e7dfd5; border-radius: 22px; background: #fffdf9; box-shadow: 0 26px 65px #2c1c1140; }
 .help-legal-panel > div:first-child { display: flex; justify-content: space-between; gap: 16px; }
 .help-legal-panel h2 { margin: 0; letter-spacing: -1.2px; font-size: 28px; }
@@ -194,6 +203,7 @@ body {
   .marketing-header-actions { margin-inline-start: auto; }
   .marketing-header-actions .marketing-cta.small { min-height: 38px; padding: 0 13px; font-size: 11px; }
   .marketing-hero { min-height: auto; grid-template-columns: 1fr; gap: 42px; padding: 63px 24px 72px; }
+  .marketing-actions { flex-direction: column; align-items: flex-start; }
   .marketing-hero h1, .legal-hero h1 { letter-spacing: -2.2px; }
   .marketing-product-carousel { width: min(100%, 300px); justify-self: center; }
   .marketing-carousel-frame { aspect-ratio: 390 / 560; border-radius: 22px; }
@@ -209,6 +219,9 @@ body {
   .legal-content { grid-template-columns: 1fr; padding: 55px 24px 76px; }
   .legal-content aside { position: static; grid-template-columns: repeat(2, 1fr); }
   .legal-content aside strong { grid-column: 1 / -1; }
+  .contact-content { grid-template-columns: 1fr; padding: 34px 24px 68px; }
+  .contact-action { min-height: 86px; padding: 17px 0; border-bottom: 1px solid #e2dbd1; }
+  .contact-action + .contact-action { border-inline-start: 0; }
 }
 button,
 input,
