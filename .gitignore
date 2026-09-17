@@ -8,3 +8,4 @@ npm-debug.log*
 .DS_Store
 .codex-remote-attachments/
 LOCAL_VPS_DEPLOYMENT.md
+.vscode/

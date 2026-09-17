@@ -239,17 +239,13 @@ function ProductCarousel({ locale }: { locale: PublicLocale }) {
   );
 }
 
-function Header({ locale, onOpenLanguage, onNavigate, onSignIn }: Pick<PublicSiteProps, "locale" | "onNavigate" | "onSignIn"> & { onOpenLanguage: () => void }) {
+function Header({ locale, onOpenLanguage, onNavigate }: Pick<PublicSiteProps, "locale" | "onNavigate"> & { onOpenLanguage: () => void }) {
   const he = locale === "he";
   return <header className="marketing-header">
     <FeedmeBrand onClick={() => onNavigate("/")} />
-    <nav aria-label="Public navigation">
-      <button onClick={() => onNavigate("/#how-it-works")}>{he ? "איך זה עובד" : "How it works"}</button>
-      <button onClick={() => onNavigate("/privacy")}>{he ? "אמון ופרטיות" : "Trust"}</button>
-    </nav>
+
     <div className="marketing-header-actions">
       <LanguageControl locale={locale} label={he ? "שפה" : "Language"} onClick={onOpenLanguage} />
-      <button className="marketing-sign-in" onClick={onSignIn}>{he ? "כניסה" : "Sign in"}</button>
     </div>
   </header>;
 }
@@ -293,6 +289,7 @@ function Landing({ locale, onNavigate, onSignIn }: Pick<PublicSiteProps, "locale
 
 function LegalPage({ page, locale }: Pick<PublicSiteProps, "page" | "locale">) {
   const content = (locale === "he" ? hebrewPageByPath : pageByPath)[page as Exclude<PublicPage, "landing">];
+  if (page === "about") return <AboutPage locale={locale} />;
   if (page === "contact") return <ContactPage content={content} locale={locale} />;
   return <>
     <section className="legal-hero"><p className="marketing-eyebrow">{content.eyebrow}</p><h1>{content.title}</h1><p>{content.intro}</p></section>
@@ -300,6 +297,39 @@ function LegalPage({ page, locale }: Pick<PublicSiteProps, "page" | "locale">) {
       <aside><strong>{locale === "he" ? "בדף הזה" : "ON THIS PAGE"}</strong>{content.sections.map(([heading]) => <a key={heading} href={`#${heading.toLowerCase().replaceAll(" ", "-")}`}>{heading}</a>)}</aside>
       <article>{content.sections.map(([heading, body]) => <section id={heading.toLowerCase().replaceAll(" ", "-")} key={heading}><h2>{heading}</h2><p>{body}</p></section>)}<div className="legal-callout"><ShieldCheck size={20} /><p>{locale === "he" ? "לפני ההשקה, מדיניות סופית, פרטי קשר ותאריכי תחילה יחליפו את טיוטות הדפים הציבוריים המוכנות האלה." : "Before launch, final policies, contact details and effective dates will replace these prepared public-page drafts."}</p></div></article>
     </main>
+  </>;
+}
+
+function AboutPage({ locale }: { locale: PublicLocale }) {
+  const he = locale === "he";
+  const heroTitle = he
+    ? "אתם משקיעים המון בטיפול בילדים, תנו לנו לזכור מה קרה ומתי"
+    : "You invest so much in caring for your children. Let us remember what happened and when.";
+  const heroCopy = he
+    ? [
+        "Feedme נותנת לכם מקום לתעד את פעילויות הטיפול בילדים בקלות ובנוחות.",
+        "עם התזכורות והמידע של Feedme תדעו תמיד מתי הילד צריך לאכול או האם הוא הרטיב מספיק טיטולים היום.",
+      ]
+    : [
+        "Feedme gives you an easy, comfortable place to record your child’s care activities.",
+        "With Feedme’s reminders and information, you’ll always know when your child needs to eat and whether they have had enough wet diapers today.",
+      ];
+  const story = he
+    ? [
+        "Feedme הוקמה מתוך צורך אמיתי שלנו כהורים.",
+        "הרצון להיות בשליטה על מה שקורה עם התינוק שלנו ולשתף את המידע בקלות בין המטפלים הוביל אותנו לפתח את האפליקציה.",
+        "השקענו המון מחשבה על חוויית המשתמש — כדי שתהיו מעודכנים תמיד.",
+        "אז במקום לנהל טבלאות או לנסות לזכור בראש מתי האכלתם אותו לאחרונה, תוסיפו רשומה ב-Feedme ותהיו עם ראש שקט.",
+      ]
+    : [
+        "Feedme was born from a real need we felt as parents.",
+        "Wanting to stay in control of what was happening with our baby—and to easily share information between caregivers—led us to build the app.",
+        "We put a great deal of thought into the user experience, so you can always stay up to date.",
+        "Instead of managing spreadsheets or trying to remember when you last fed them, add a record in Feedme and enjoy peace of mind.",
+      ];
+  return <>
+    <section className="legal-hero about-hero"><p className="marketing-eyebrow">{he ? "אודות FEEDME" : "ABOUT FEEDME"}</p><h1>{heroTitle}</h1><p>{heroCopy[0]}<br /><br />{heroCopy[1]}</p></section>
+    <main className="about-content"><p>{story[0]}<br /><br />{story[1]}<br /><br />{story[2]}<br /><br />{story[3]}</p></main>
   </>;
 }
 
@@ -331,7 +361,7 @@ function WhatsAppIcon() {
 export function PublicSite({ page, locale, onLocale, onNavigate, onSignIn }: PublicSiteProps) {
   const [languageOpen, setLanguageOpen] = useState(false);
   return <div className="marketing-shell" dir={locale === "he" ? "rtl" : "ltr"}>
-    <Header locale={locale} onOpenLanguage={() => setLanguageOpen(true)} onNavigate={onNavigate} onSignIn={onSignIn} />
+    <Header locale={locale} onOpenLanguage={() => setLanguageOpen(true)} onNavigate={onNavigate} />
     {page === "landing" ? <Landing locale={locale} onNavigate={onNavigate} onSignIn={onSignIn} /> : <LegalPage page={page} locale={locale} />}
     <Footer locale={locale} onNavigate={onNavigate} />
     {languageOpen && <LanguagePicker locale={locale} onClose={() => setLanguageOpen(false)} onSelect={(nextLocale) => { onLocale(nextLocale); setLanguageOpen(false); }} />}
