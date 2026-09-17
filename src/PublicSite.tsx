@@ -269,7 +269,7 @@ function Landing({ locale, onNavigate, onSignIn }: Pick<PublicSiteProps, "locale
         <h1>{he ? "כל רגע קטן של טיפול, מחובר יחד." : "Every small care moment, held together."}</h1>
         <p>{he ? "ציר זמן משותף אחד להאכלות, החלפות חיתול, הערות, תזכורות ולכל מי שמטפל בילד שלכם." : "One shared timeline for feeds, diaper changes, notes, reminders and the people who care for your child."}</p>
         <div className="marketing-actions">
-          <button className="marketing-cta" onClick={onSignIn}>{he ? "כנס למרחב המשפחתי" : "Join your care space"} {he ? <ArrowLeft size={17} /> : <ArrowRight size={17} />}</button>
+          <button className="marketing-cta" onClick={onSignIn}>{he ? "כנס למרחב המשפחתי" : "Enter your care space"} {he ? <ArrowLeft size={17} /> : <ArrowRight size={17} />}</button>
           <button className="marketing-secondary" onClick={() => onNavigate("/#how-it-works")}>{he ? "איך זה עובד" : "How it works"}</button>
         </div>
       </div>
