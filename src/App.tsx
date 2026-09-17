@@ -1019,6 +1019,9 @@ export default function App() {
         onLocale={setLocale}
         onNavigate={navigate}
         onSignIn={() => navigate(user ? "/children" : "/sign-in")}
+        accountName={user?.display_name}
+        onSettings={user ? () => navigate("/account/privacy") : undefined}
+        onSignOut={user ? signOut : undefined}
       />
     );
   if (loading)
@@ -1029,6 +1032,7 @@ export default function App() {
         locale={user.locale}
         email={user.email}
         onBack={() => navigate("/children")}
+        onLanding={() => navigate("/")}
         onDownload={downloadAccountData}
         onDelete={deleteAccount}
       />
@@ -1045,7 +1049,7 @@ export default function App() {
             />
           </div>
           <form className="sign-in" onSubmit={login}>
-            <FeedmeBrand />
+            <FeedmeBrand onClick={() => navigate("/")} />
             <p className="eyebrow">{t("SHARED CHILD CARE")}</p>
             <h1>
               {auth === "sign-in"
@@ -1147,8 +1151,9 @@ export default function App() {
           onCloseLanguage={() => setLanguageOpen(false)}
           onLocale={setLocale}
           onSignOut={signOut}
-          onHome={() => navigate("/children")}
+          onHome={() => navigate("/")}
           onPrivacyData={() => navigate("/account/privacy")}
+          onNavigateLegal={navigate}
         />
         {invitePreview && (
           <InvitationPreviewModal
@@ -1174,8 +1179,9 @@ export default function App() {
         onCloseLanguage={() => setLanguageOpen(false)}
         onLocale={setLocale}
         onSignOut={signOut}
-        onHome={() => navigate("/children")}
+        onHome={() => navigate("/")}
         onPrivacyData={() => navigate("/account/privacy")}
+        onNavigateLegal={navigate}
       />
     );
   if (!dash)
@@ -1223,7 +1229,7 @@ export default function App() {
         onClick={() => setMobileSidebarOpen(false)}
       />
       <aside className="sidebar">
-        <FeedmeBrand onClick={() => navigate("/children")} />
+        <FeedmeBrand onClick={() => navigate("/")} />
         <label className="child-switch">
           <span className="avatar">{child.name[0]}</span>
           <span>
@@ -1303,9 +1309,8 @@ export default function App() {
           </button>
           <SidebarAccount
             displayName={user.display_name}
-            detail={t(dash.role === "care_manager" ? "Care manager" : dash.role)}
-            privacyDataLabel={t("Privacy & data")}
-            onPrivacyData={() => navigate("/account/privacy")}
+            settingsLabel={t("Settings")}
+            onSettings={() => navigate("/account/privacy")}
             signOutLabel={t("Sign out")}
             onSignOut={signOut}
           />
@@ -2311,14 +2316,17 @@ function HomeSidebar({
   onOpenLanguage,
   onSignOut,
   onPrivacyData,
+  onNavigateLegal,
 }: {
   user: User;
   onHome: () => void;
   onOpenLanguage: () => void;
   onSignOut: () => void;
   onPrivacyData: () => void;
+  onNavigateLegal: (path: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [helpLegalOpen, setHelpLegalOpen] = useState(false);
   usePageScrollLock(open);
   const close = () => setOpen(false);
   const t = (text: string) => translate(user.locale, text);
@@ -2348,10 +2356,20 @@ function HomeSidebar({
               onOpenLanguage();
             }}
           />
+          <button
+            className="home-help-legal"
+            onClick={() => {
+              close();
+              setHelpLegalOpen(true);
+            }}
+          >
+            <CircleHelp size={18} />
+            {t("Help & legal")}
+          </button>
           <SidebarAccount
             displayName={user.display_name}
-            privacyDataLabel={t("Privacy & data")}
-            onPrivacyData={() => {
+            settingsLabel={t("Settings")}
+            onSettings={() => {
               close();
               onPrivacyData();
             }}
@@ -2360,6 +2378,18 @@ function HomeSidebar({
           />
         </div>
       </aside>
+      {helpLegalOpen && (
+        <ModalBackdrop onClose={() => setHelpLegalOpen(false)}>
+          <HelpLegalPanel
+            locale={user.locale}
+            onClose={() => setHelpLegalOpen(false)}
+            onNavigate={(path) => {
+              setHelpLegalOpen(false);
+              onNavigateLegal(path);
+            }}
+          />
+        </ModalBackdrop>
+      )}
     </>
   );
 }
@@ -2378,6 +2408,7 @@ function Home({
   onSignOut,
   onHome,
   onPrivacyData,
+  onNavigateLegal,
 }: {
   user: User;
   error: string;
@@ -2392,6 +2423,7 @@ function Home({
   onSignOut: () => void;
   onHome: () => void;
   onPrivacyData: () => void;
+  onNavigateLegal: (path: string) => void;
 }) {
   const t = (text: string) => translate(user.locale, text);
   return (
@@ -2402,6 +2434,7 @@ function Home({
         onOpenLanguage={onOpenLanguage}
         onSignOut={onSignOut}
         onPrivacyData={onPrivacyData}
+        onNavigateLegal={onNavigateLegal}
       />
       <section className="empty-home">
         <p className="eyebrow">{t("YOUR FAMILY SPACE")}</p>
@@ -2457,6 +2490,7 @@ function ChildrenHome({
   onSignOut,
   onHome,
   onPrivacyData,
+  onNavigateLegal,
 }: {
   user: User;
   children: Child[];
@@ -2475,6 +2509,7 @@ function ChildrenHome({
   onSignOut: () => void;
   onHome: () => void;
   onPrivacyData: () => void;
+  onNavigateLegal: (path: string) => void;
 }) {
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   const t = (text: string) => translate(user.locale, text);
@@ -2486,6 +2521,7 @@ function ChildrenHome({
         onOpenLanguage={onOpenLanguage}
         onSignOut={onSignOut}
         onPrivacyData={onPrivacyData}
+        onNavigateLegal={onNavigateLegal}
       />
       <section className="children-home">
         <div className="children-home-heading">

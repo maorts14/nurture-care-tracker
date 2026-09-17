@@ -1,47 +1,65 @@
-import { LogOut, ShieldCheck } from "lucide-react";
+import { ChevronDown, LogOut, Settings } from "lucide-react";
+import { useState } from "react";
 
 type SidebarAccountProps = {
   displayName: string;
-  detail?: string;
-  onPrivacyData?: () => void;
-  privacyDataLabel?: string;
+  onSettings?: () => void;
+  settingsLabel?: string;
   onSignOut: () => void;
   signOutLabel: string;
 };
 
 export function SidebarAccount({
   displayName,
-  detail,
-  onPrivacyData,
-  privacyDataLabel,
+  onSettings,
+  settingsLabel,
   onSignOut,
   signOutLabel,
 }: SidebarAccountProps) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const closeMenu = () => setIsOpen(false);
+
   return (
-    <div className="user">
-      <span className="avatar you">{displayName[0]}</span>
-      <span>
-        <strong>{displayName}</strong>
-        {detail && <small>{detail}</small>}
-      </span>
-      {onPrivacyData && privacyDataLabel && (
-        <button
-          className="sidebar-account-action"
-          onClick={onPrivacyData}
-          aria-label={privacyDataLabel}
-        >
-          <ShieldCheck size={16} />
-          <span>{privacyDataLabel}</span>
-        </button>
-      )}
+    <div className="user sidebar-account">
       <button
-        className="sidebar-sign-out"
-        onClick={onSignOut}
-        aria-label={signOutLabel}
+        className="sidebar-account-trigger"
+        onClick={() => setIsOpen((open) => !open)}
+        aria-expanded={isOpen}
+        aria-haspopup="menu"
       >
-        <LogOut size={16} />
-        <span>{signOutLabel}</span>
+        <span className="avatar you">{displayName[0]}</span>
+        <strong>{displayName}</strong>
+        <ChevronDown size={16} aria-hidden="true" />
       </button>
+      {isOpen && (
+        <div className="sidebar-account-menu" role="menu">
+          {onSettings && settingsLabel && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                onSettings();
+              }}
+            >
+              <Settings size={16} />
+              {settingsLabel}
+            </button>
+          )}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              closeMenu();
+              onSignOut();
+            }}
+          >
+            <LogOut size={16} />
+            {signOutLabel}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

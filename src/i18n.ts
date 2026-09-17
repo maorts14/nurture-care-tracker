@@ -34,6 +34,7 @@ const hebrew: Record<string, string> = {
   owner: "בעלים",
   Language: "שפה",
   "Sign out": "התנתקות",
+  Settings: "הגדרות",
   "Close navigation": "סגירת הניווט",
   "Open navigation": "פתיחת הניווט",
   "Export CSV": "ייצוא CSV",

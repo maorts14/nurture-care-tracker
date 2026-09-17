@@ -7,6 +7,7 @@ type AccountDataPageProps = {
   locale: "en" | "he";
   email: string;
   onBack: () => void;
+  onLanding: () => void;
   onDownload: () => Promise<void>;
   onDelete: (emailConfirmation: string) => Promise<void>;
 };
@@ -15,6 +16,7 @@ export function AccountDataPage({
   locale,
   email,
   onBack,
+  onLanding,
   onDownload,
   onDelete,
 }: AccountDataPageProps) {
@@ -51,7 +53,7 @@ export function AccountDataPage({
   return (
     <main className="account-data-page">
       <header className="account-data-header">
-        <FeedmeBrand onClick={onBack} />
+        <FeedmeBrand onClick={onLanding} />
         <button className="text-button account-back" onClick={onBack}>
           <ArrowLeft size={17} />
           {t("Back to children")}

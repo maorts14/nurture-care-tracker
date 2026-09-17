@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowRight, ChevronRight, Clock3, Cookie, Eye, FileText, HeartPulse, LockKeyhole, Mail, ShieldCheck, Users } from "lucide-react";
+import { ArrowLeft, ArrowRight, ChevronDown, ChevronLeft, ChevronRight, Clock3, Cookie, Eye, FileText, HeartPulse, LockKeyhole, LogOut, Mail, Settings, ShieldCheck, Users } from "lucide-react";
 import { useRef, useState } from "react";
 import { FeedmeBrand } from "./components/FeedmeBrand";
 import { LanguageControl } from "./components/LanguageControl";
@@ -13,6 +13,9 @@ type PublicSiteProps = {
   onLocale: (locale: PublicLocale) => void;
   onNavigate: (path: string) => void;
   onSignIn: () => void;
+  accountName?: string;
+  onSettings?: () => void;
+  onSignOut?: () => void;
 };
 
 const pageByPath: Record<Exclude<PublicPage, "landing">, { eyebrow: string; title: string; intro: string; sections: Array<[string, string]> }> = {
@@ -197,6 +200,7 @@ function ProductCarousel({ locale }: { locale: PublicLocale }) {
   const he = locale === "he";
   const [activeIndex, setActiveIndex] = useState(0);
   const trackRef = useRef<HTMLDivElement>(null);
+  const touchStartX = useRef<number | null>(null);
   const screenshotLocale = he ? "he" : "en";
 
   const updateActiveSlide = () => {
@@ -209,13 +213,38 @@ function ProductCarousel({ locale }: { locale: PublicLocale }) {
   const selectSlide = (index: number) => {
     const track = trackRef.current;
     if (!track) return;
-    track.scrollTo({ left: (he ? -1 : 1) * track.clientWidth * index, behavior: "smooth" });
+    const boundedIndex = Math.max(0, Math.min(index, productScreens.length - 1));
+    track.scrollTo({ left: (he ? -1 : 1) * track.clientWidth * boundedIndex, behavior: "smooth" });
+  };
+  const selectAdjacentSlide = (side: "left" | "right") => {
+    const direction = side === "left" ? (he ? 1 : -1) : (he ? -1 : 1);
+    selectSlide(activeIndex + direction);
   };
 
   return (
     <section className="marketing-product-carousel" aria-label={he ? "צילומי מסך של Feedme" : "Feedme product screenshots"}>
-      <div className="marketing-carousel-frame">
-        <div className="marketing-carousel-track" dir={he ? "rtl" : "ltr"} ref={trackRef} onScroll={updateActiveSlide}>
+      <div className="marketing-carousel-frame" onClick={(event) => {
+        if (window.matchMedia("(max-width: 760px)").matches) return;
+        const bounds = event.currentTarget.getBoundingClientRect();
+        selectAdjacentSlide(event.clientX < bounds.left + bounds.width / 2 ? "left" : "right");
+      }}>
+        <div
+          className="marketing-carousel-track"
+          dir={he ? "rtl" : "ltr"}
+          ref={trackRef}
+          onScroll={updateActiveSlide}
+          onTouchStart={(event) => {
+            touchStartX.current = event.touches[0]?.clientX ?? null;
+          }}
+          onTouchEnd={(event) => {
+            const startX = touchStartX.current;
+            touchStartX.current = null;
+            const endX = event.changedTouches[0]?.clientX;
+            if (startX === null || endX === undefined || Math.abs(endX - startX) < 36) return;
+            const isNextSlide = he ? endX > startX : endX < startX;
+            selectSlide(activeIndex + (isNextSlide ? 1 : -1));
+          }}
+        >
           {productScreens.map((screen, index) => <div className={`marketing-carousel-slide${index === activeIndex ? " active" : ""}`} key={screen.id}>
             {Math.abs(index - activeIndex) <= 1 && <picture>
               <source media="(min-width: 761px)" srcSet={`/product-screenshots/${screen.id}-${screenshotLocale}-desktop.png`} />
@@ -223,6 +252,8 @@ function ProductCarousel({ locale }: { locale: PublicLocale }) {
             </picture>}
           </div>)}
         </div>
+        <button className="marketing-carousel-arrow marketing-carousel-arrow-left" type="button" aria-label={he ? "הצילום הקודם" : "Previous screenshot"} onClick={(event) => { event.stopPropagation(); selectAdjacentSlide(he ? "right" : "left"); }}>{he ? <ChevronRight size={23} /> : <ChevronLeft size={23} />}</button>
+        <button className="marketing-carousel-arrow marketing-carousel-arrow-right" type="button" aria-label={he ? "הצילום הבא" : "Next screenshot"} onClick={(event) => { event.stopPropagation(); selectAdjacentSlide(he ? "left" : "right"); }}>{he ? <ChevronLeft size={23} /> : <ChevronRight size={23} />}</button>
       </div>
       <div className="marketing-carousel-dots" role="tablist" aria-label={he ? "בחירת צילום מסך" : "Choose a product screenshot"}>
         {productScreens.map((screen, index) => <button
@@ -239,13 +270,25 @@ function ProductCarousel({ locale }: { locale: PublicLocale }) {
   );
 }
 
-function Header({ locale, onOpenLanguage, onNavigate }: Pick<PublicSiteProps, "locale" | "onNavigate"> & { onOpenLanguage: () => void }) {
+function Header({ locale, onOpenLanguage, onNavigate, onSignIn, accountName, onSettings, onSignOut }: Pick<PublicSiteProps, "locale" | "onNavigate" | "onSignIn" | "accountName" | "onSettings" | "onSignOut"> & { onOpenLanguage: () => void }) {
   const he = locale === "he";
+  const [accountOpen, setAccountOpen] = useState(false);
   return <header className="marketing-header">
     <FeedmeBrand onClick={() => onNavigate("/")} />
 
     <div className="marketing-header-actions">
       <LanguageControl locale={locale} label={he ? "שפה" : "Language"} onClick={onOpenLanguage} />
+      {accountName && onSettings && onSignOut ? <div className="marketing-account">
+        <button className="marketing-account-trigger" onClick={() => setAccountOpen((open) => !open)} aria-expanded={accountOpen} aria-label={he ? "תפריט חשבון" : "Account menu"}>
+          <span className="marketing-account-avatar" aria-hidden="true">{accountName[0]}</span>
+          <span className="marketing-account-name">{accountName}</span>
+          <ChevronDown size={15} aria-hidden="true" />
+        </button>
+        {accountOpen && <div className="marketing-account-menu" role="menu">
+          <button role="menuitem" onClick={() => { setAccountOpen(false); onSettings(); }}><Settings size={16} /> {he ? "הגדרות" : "Settings"}</button>
+          <button role="menuitem" className="marketing-account-sign-out" onClick={() => { setAccountOpen(false); onSignOut(); }}><LogOut size={16} /> {he ? "התנתקות" : "Sign out"}</button>
+        </div>}
+      </div> : <button className="marketing-sign-in" onClick={onSignIn}>{he ? "כניסה" : "Sign in"}</button>}
     </div>
   </header>;
 }
@@ -358,10 +401,10 @@ function WhatsAppIcon() {
   </svg>;
 }
 
-export function PublicSite({ page, locale, onLocale, onNavigate, onSignIn }: PublicSiteProps) {
+export function PublicSite({ page, locale, onLocale, onNavigate, onSignIn, accountName, onSettings, onSignOut }: PublicSiteProps) {
   const [languageOpen, setLanguageOpen] = useState(false);
   return <div className="marketing-shell" dir={locale === "he" ? "rtl" : "ltr"}>
-    <Header locale={locale} onOpenLanguage={() => setLanguageOpen(true)} onNavigate={onNavigate} />
+    <Header locale={locale} onOpenLanguage={() => setLanguageOpen(true)} onNavigate={onNavigate} onSignIn={onSignIn} accountName={accountName} onSettings={onSettings} onSignOut={onSignOut} />
     {page === "landing" ? <Landing locale={locale} onNavigate={onNavigate} onSignIn={onSignIn} /> : <LegalPage page={page} locale={locale} />}
     <Footer locale={locale} onNavigate={onNavigate} />
     {languageOpen && <LanguagePicker locale={locale} onClose={() => setLanguageOpen(false)} onSelect={(nextLocale) => { onLocale(nextLocale); setLanguageOpen(false); }} />}
