@@ -18,7 +18,7 @@ type PublicSiteProps = {
   onSignOut?: () => void;
 };
 
-const pageByPath: Record<Exclude<PublicPage, "landing">, { eyebrow: string; title: string; intro: string; sections: Array<[string, string]> }> = {
+const pageByPath: Record<Exclude<PublicPage, "landing">, { eyebrow?: string; title: string; intro: string; sections: Array<[string, string]> }> = {
   about: {
     eyebrow: "ABOUT FEEDME",
     title: "A shared care story, not another family chat.",
@@ -30,7 +30,6 @@ const pageByPath: Record<Exclude<PublicPage, "landing">, { eyebrow: string; titl
     ],
   },
   privacy: {
-    eyebrow: "TRUST CENTER",
     title: "Privacy, in plain language.",
     intro: "This page explains the principles that guide how Feedme handles family-care information. The final legal policy will be reviewed before public launch.",
     sections: [
@@ -43,7 +42,6 @@ const pageByPath: Record<Exclude<PublicPage, "landing">, { eyebrow: string; titl
     ],
   },
   terms: {
-    eyebrow: "TRUST CENTER",
     title: "Terms and safety.",
     intro: "Feedme is a coordination tool for family care. These terms are a readable product outline until the final terms receive legal review.",
     sections: [
@@ -53,9 +51,8 @@ const pageByPath: Record<Exclude<PublicPage, "landing">, { eyebrow: string; titl
     ],
   },
   accessibility: {
-    eyebrow: "TRUST CENTER",
     title: "Accessibility and inclusion.",
-    intro: "Feedme is being designed so a family-care timeline is understandable and usable by as many people as possible. This statement will be reviewed and updated before public launch.",
+    intro: "We built Feedme to be clear and easy to use. To support this, we implemented a number of accessibility principles.",
     sections: [
       ["Designed for clarity", "The product uses readable language, clear labels, visible focus states and familiar controls for everyday care actions."],
       ["Keyboard and assistive technology", "Interactive controls are built to be operable by keyboard and to expose meaningful names and states to assistive technology."],
@@ -86,7 +83,6 @@ const hebrewPageByPath: typeof pageByPath = {
     ],
   },
   privacy: {
-    eyebrow: "מרכז האמון",
     title: "פרטיות, בשפה פשוטה.",
     intro: "דף זה מסביר את העקרונות שמנחים את Feedme בטיפול במידע על טיפול משפחתי. המדיניות המשפטית הסופית תעבור בדיקה לפני ההשקה לציבור.",
     sections: [
@@ -99,7 +95,6 @@ const hebrewPageByPath: typeof pageByPath = {
     ],
   },
   terms: {
-    eyebrow: "מרכז האמון",
     title: "תנאים ובטיחות.",
     intro: "Feedme היא כלי לתיאום טיפול משפחתי. תנאים אלה הם תיאור מוצר קריא עד שהנוסח הסופי יעבור בדיקה משפטית.",
     sections: [
@@ -109,9 +104,8 @@ const hebrewPageByPath: typeof pageByPath = {
     ],
   },
   accessibility: {
-    eyebrow: "מרכז האמון",
     title: "נגישות והכללה.",
-    intro: "Feedme נבנית כך שציר הזמן המשפחתי יהיה מובן ושימושי לכמה שיותר אנשים. הצהרה זו תעבור בדיקה ותתעדכן לפני ההשקה לציבור.",
+    intro: "בנינו את Feedme כך שתהיה ברורה וקלה לשימוש, לשם כך דאגנו ליישם מספר עקרונות הנגשה.",
     sections: [
       ["נבנה לבהירות", "המוצר משתמש בשפה קריאה, תוויות ברורות, מצבי מיקוד גלויים ובקרות מוכרות לפעולות טיפול יומיומיות."],
       ["מקלדת וטכנולוגיה מסייעת", "בקרות אינטראקטיביות נבנות כדי לעבוד באמצעות מקלדת ולהציג שמות ומצבים משמעותיים לטכנולוגיה מסייעת."],
@@ -269,7 +263,7 @@ function Landing({ locale, onNavigate, onSignIn }: Pick<PublicSiteProps, "locale
         <h1>{he ? "כל רגע קטן של טיפול, מחובר יחד." : "Every small care moment, held together."}</h1>
         <p>{he ? "ציר זמן משותף אחד להאכלות, החלפות חיתול, הערות, תזכורות ולכל מי שמטפל בילד שלכם." : "One shared timeline for feeds, diaper changes, notes, reminders and the people who care for your child."}</p>
         <div className="marketing-actions">
-          <button className="marketing-cta" onClick={onSignIn}>{he ? "כנס למרחב המשפחתי" : "Enter your care space"} {he ? <ArrowLeft size={17} /> : <ArrowRight size={17} />}</button>
+          <button className="marketing-cta marketing-enter-space" onClick={onSignIn}>{he ? "כנס למרחב המשפחתי" : "Enter your care space"} {he ? <ArrowLeft size={17} /> : <ArrowRight size={17} />}</button>
           <button className="marketing-secondary" onClick={() => onNavigate("/#how-it-works")}>{he ? "איך זה עובד" : "How it works"}</button>
         </div>
       </div>
@@ -293,11 +287,39 @@ function LegalPage({ page, locale }: Pick<PublicSiteProps, "page" | "locale">) {
   const content = (locale === "he" ? hebrewPageByPath : pageByPath)[page as Exclude<PublicPage, "landing">];
   if (page === "about") return <AboutPage locale={locale} />;
   if (page === "contact") return <ContactPage content={content} locale={locale} />;
+  if (page === "accessibility") return <AccessibilityPage locale={locale} />;
   return <>
-    <section className="legal-hero"><p className="marketing-eyebrow">{content.eyebrow}</p><h1>{content.title}</h1><p>{content.intro}</p></section>
+    <section className="legal-hero">{content.eyebrow && <p className="marketing-eyebrow">{content.eyebrow}</p>}<h1>{content.title}</h1><p>{content.intro}</p></section>
     <main className="legal-content">
       <aside><strong>{locale === "he" ? "בדף הזה" : "ON THIS PAGE"}</strong>{content.sections.map(([heading]) => <a key={heading} href={`#${heading.toLowerCase().replaceAll(" ", "-")}`}>{heading}</a>)}</aside>
       <article>{content.sections.map(([heading, body]) => <section id={heading.toLowerCase().replaceAll(" ", "-")} key={heading}><h2>{heading}</h2><p>{body}</p></section>)}<div className="legal-callout"><ShieldCheck size={20} /><p>{locale === "he" ? "לפני ההשקה, מדיניות סופית, פרטי קשר ותאריכי תחילה יחליפו את טיוטות הדפים הציבוריים המוכנות האלה." : "Before launch, final policies, contact details and effective dates will replace these prepared public-page drafts."}</p></div></article>
+    </main>
+  </>;
+}
+
+function AccessibilityPage({ locale }: { locale: PublicLocale }) {
+  const content = (locale === "he" ? hebrewPageByPath : pageByPath).accessibility;
+  const principles = locale === "he"
+    ? [
+        ["ניגודיות צבעים קריאה", "חיזקנו את הניגודיות בין טקסט, לחצנים, סמלי פעולה ומצבי מיקוד, כדי לשפר את הקריאות."],
+        ["טקסט קריא", "הגדלנו טקסט תפעולי קטן וחיזקנו צבעי טקסט משניים, כדי שהמידע היומיומי יהיה נוח יותר לקריאה."],
+        ["תמיכה בעברית ובאנגלית", "הממשק מתאים את השפה ואת הכיוון שלו לבחירת המשתמש, כולל תצוגה מימין לשמאל בעברית."],
+        ["בקרות מוכרות", "פעולות במוצר משתמשות בכפתורים ובקישורים אמיתיים, עם תוויות ברורות לפעולות יומיומיות."],
+        ["מצב מיקוד נראה לעין", "בקרות שנבחרות בעזרת מקלדת מקבלות סימון מיקוד ברור, כדי שיהיה אפשר לראות היכן נמצאים בממשק."],
+        ["הפחתת תנועה", "המעברים בציר הזמן מכבדים את העדפת המערכת להפחתת תנועה."],
+      ]
+    : [
+        ["Readable color contrast", "We strengthened contrast for text, buttons, action icons, and focus indicators to improve readability."],
+        ["Readable text", "We increased small operational text and strengthened secondary text colors so everyday information is easier to read."],
+        ["English and Hebrew support", "The interface follows the user’s selected language and direction, including right-to-left presentation in Hebrew."],
+        ["Familiar controls", "Product actions use real buttons and links, with clear labels for everyday tasks."],
+        ["Visible focus", "Controls selected with a keyboard receive a clear focus indicator, so it is possible to see where you are in the interface."],
+        ["Reduced motion", "Timeline transitions respect the system preference for reduced motion."],
+      ];
+  return <>
+    <section className="legal-hero"><h1>{content.title}</h1><p>{content.intro}</p></section>
+    <main className="accessibility-content">
+      <ol>{principles.map(([heading, body]) => <li key={heading}><h2>{heading}</h2><p>{body}</p></li>)}</ol>
     </main>
   </>;
 }

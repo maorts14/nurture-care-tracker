@@ -7,8 +7,12 @@ const profileDir = new URL("../.tmp-marketing-screenshot-profile", import.meta.u
 const outputDir = "public/product-screenshots";
 const baseUrl = "http://localhost:5173";
 const requestedLocale = process.argv[2];
+const requestedViewport = process.argv[3];
 if (requestedLocale && requestedLocale !== "en" && requestedLocale !== "he") {
   throw new Error("Optional locale argument must be en or he");
+}
+if (requestedViewport && requestedViewport !== "mobile" && requestedViewport !== "desktop") {
+  throw new Error("Optional viewport argument must be mobile or desktop");
 }
 
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -106,7 +110,7 @@ async function capture(connection, fileName, scrollY = 0) {
   await evaluate(connection, `
     document.documentElement.classList.add("marketing-screenshot-capture");
     const style = document.createElement("style");
-    style.textContent = ".marketing-screenshot-capture, .marketing-screenshot-capture * { scrollbar-width: none !important; } .marketing-screenshot-capture::-webkit-scrollbar, .marketing-screenshot-capture *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }";
+    style.textContent = ".marketing-screenshot-capture, .marketing-screenshot-capture * { scrollbar-width: none !important; } .marketing-screenshot-capture::-webkit-scrollbar, .marketing-screenshot-capture *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; } @media (min-width: 761px) { :root.marketing-screenshot-capture { --ui-text-scale: 4px !important; } }";
     document.head.append(style);
   `);
   if (scrollY > 0) await evaluate(connection, `window.scrollTo({ top: ${scrollY}, behavior: "instant" })`);
@@ -165,7 +169,7 @@ try {
     for (const [viewport, width, height] of [
       ["mobile", 390, 844],
       ["desktop", 1440, 900],
-    ]) {
+    ].filter(([viewport]) => !requestedViewport || viewport === requestedViewport)) {
       await connection.command("Emulation.setDeviceMetricsOverride", {
         width,
         height,

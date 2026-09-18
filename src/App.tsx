@@ -190,6 +190,19 @@ const icon = (kind: Activity["kind"]) =>
   ) : (
     <HeartPulse size={17} />
   );
+const accessibleIconColor = (backgroundColor: string) => {
+  const value = /^#([\da-f]{6})$/i.exec(backgroundColor)?.[1];
+  if (!value) return "#000";
+  const luminance = [0, 2, 4].reduce((total, index) => {
+    const channel = parseInt(value.slice(index, index + 2), 16) / 255;
+    const linear =
+      channel <= 0.04045
+        ? channel / 12.92
+        : ((channel + 0.055) / 1.055) ** 2.4;
+    return total + linear * [0.2126, 0.7152, 0.0722][index / 2];
+  }, 0);
+  return luminance > 0.179 ? "#000" : "#fff";
+};
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...options,
@@ -1559,7 +1572,14 @@ export default function App() {
                   >
                     <time>{clock(event.event_time, user.locale)}</time>
                     <span className="event-line">
-                      <i style={{ background: event.color }}>{icon(event.kind)}</i>
+                      <i
+                        style={{
+                          background: event.color,
+                          color: accessibleIconColor(event.color),
+                        }}
+                      >
+                        {icon(event.kind)}
+                      </i>
                     </span>
                     <div className="event-content">
                       <div className="event-title">
@@ -2122,7 +2142,14 @@ function LogModal({
               disabled={!editable}
               onClick={() => onActivity(item.id)}
             >
-              <i style={{ background: item.color }}>{icon(item.kind)}</i>
+              <i
+                style={{
+                  background: item.color,
+                  color: accessibleIconColor(item.color),
+                }}
+              >
+                {icon(item.kind)}
+              </i>
               {t(item.name)}
             </button>
           ))}

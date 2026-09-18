@@ -483,7 +483,7 @@ app.post("/api/children", async (request, response) => {
       [id, session.userId],
     );
     await client.query(
-      "INSERT INTO activity_definition (child_id, name, kind, color) VALUES ($1, 'Feeding', 'feeding', '#f3654b'), ($1, 'Diaper change', 'diaper', '#526cdb')",
+      "INSERT INTO activity_definition (child_id, name, kind, color) VALUES ($1, 'Feeding', 'feeding', '#ba5c30'), ($1, 'Diaper change', 'diaper', '#526cdb')",
       [id],
     );
     await client.query(
@@ -1193,6 +1193,10 @@ app.post("/api/children/:childId/activities", async (request, response) => {
       metrics?: string[];
     }[];
   };
+  if (!/^#[\da-f]{6}$/i.test(color)) {
+    response.status(400).json({ error: "Activity color must be a six-digit hex color" });
+    return;
+  }
   const access = await membership(childId, session.userId);
   if (!['owner', 'care_manager'].includes(access.rows[0]?.role ?? '')) {
     response.status(403).json({ error: "Owner or care manager access is required" });
@@ -1290,8 +1294,8 @@ app.put("/api/activities/:activityId", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
   const { name, color } = request.body as { name: string; color: string };
-  if (!name.trim() || !color) {
-    response.status(400).json({ error: "Activity name and color are required" });
+  if (!name.trim() || !/^#[\da-f]{6}$/i.test(color)) {
+    response.status(400).json({ error: "Activity name and a six-digit hex color are required" });
     return;
   }
   const updated = await pool.query<{ child_id: string }>(
