@@ -11,6 +11,7 @@
   --color-accent: #b94332;
   --color-warning: #805518;
   --color-success: #176f5c;
+  --focus-ring: #302c28;
 }
 
 * {
@@ -186,6 +187,7 @@ body {
 .help-legal-links button:last-child { border: 0; }
 .marketing-trust-links button:hover { color: var(--color-primary-hover); }
 .marketing-footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 48px; padding: 56px clamp(24px, 9vw, 150px); background: #252321; color: #f8f4ee; }
+.marketing-footer { --focus-ring: #fff; }
 .marketing-footer .brand { color: #fff; }
 .marketing-footer p { margin: 12px 0 0 9px; color: #aca59b; font-size: 18px; }
 .marketing-footer-links { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px 19px; max-width: 440px; }
@@ -1113,6 +1115,10 @@ nav em {
   background: var(--color-primary);
   color: #fff;
 }
+.primary:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: -6px;
+}
 .timeline-filter-tab:hover:not(.active) {
   border-color: #cfc6bc;
   background: #fff;
@@ -1144,6 +1150,11 @@ nav em {
 }
 .event-open-detail {
   cursor: pointer;
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+.event-open-detail:hover {
+  background: #f3eee8;
+  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 .event-open-detail:focus-visible {
   outline: 2px solid var(--color-primary);
@@ -1345,6 +1356,11 @@ nav em {
 }
 .due-item-open-detail {
   cursor: pointer;
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+.due-item-open-detail:hover {
+  background: #eee9e2;
+  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 .due-item-open-detail:focus-visible {
   outline: 2px solid var(--color-primary);
@@ -3479,4 +3495,35 @@ small,
   :root {
     --ui-text-scale: 2px;
   }
+}
+
+/* Keep the keyboard position visible across native and custom controls. */
+:where(
+  a[href],
+  button:not(:disabled),
+  input:not(:disabled),
+  select:not(:disabled),
+  textarea:not(:disabled),
+  [tabindex]:not([tabindex="-1"])
+):focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  :where(button:not(:disabled):not(.primary):not(.nav-active):not(.active):not(.selected):not(.check)):hover {
+    background-color: #eee9e2;
+    box-shadow: 0 1px 0 #d9d2c9;
+  }
+
+  .primary:hover {
+    background: var(--color-primary-hover);
+    box-shadow: 0 8px 18px #a43f3040;
+    transform: translateY(-1px);
+  }
+
+  :where(button.nav-active, button.active, button.selected):hover {
+    filter: brightness(0.94);
+  }
+
 }

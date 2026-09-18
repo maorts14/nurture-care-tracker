@@ -304,7 +304,6 @@ function AccessibilityPage({ locale }: { locale: PublicLocale }) {
         ["ניגודיות צבעים קריאה", "חיזקנו את הניגודיות בין טקסט, לחצנים, סמלי פעולה ומצבי מיקוד, כדי לשפר את הקריאות."],
         ["טקסט קריא", "הגדלנו טקסט תפעולי קטן וחיזקנו צבעי טקסט משניים, כדי שהמידע היומיומי יהיה נוח יותר לקריאה."],
         ["תמיכה בעברית ובאנגלית", "הממשק מתאים את השפה ואת הכיוון שלו לבחירת המשתמש, כולל תצוגה מימין לשמאל בעברית."],
-        ["בקרות מוכרות", "פעולות במוצר משתמשות בכפתורים ובקישורים אמיתיים, עם תוויות ברורות לפעולות יומיומיות."],
         ["מצב מיקוד נראה לעין", "בקרות שנבחרות בעזרת מקלדת מקבלות סימון מיקוד ברור, כדי שיהיה אפשר לראות היכן נמצאים בממשק."],
         ["הפחתת תנועה", "המעברים בציר הזמן מכבדים את העדפת המערכת להפחתת תנועה."],
       ]
@@ -312,7 +311,6 @@ function AccessibilityPage({ locale }: { locale: PublicLocale }) {
         ["Readable color contrast", "We strengthened contrast for text, buttons, action icons, and focus indicators to improve readability."],
         ["Readable text", "We increased small operational text and strengthened secondary text colors so everyday information is easier to read."],
         ["English and Hebrew support", "The interface follows the user’s selected language and direction, including right-to-left presentation in Hebrew."],
-        ["Familiar controls", "Product actions use real buttons and links, with clear labels for everyday tasks."],
         ["Visible focus", "Controls selected with a keyboard receive a clear focus indicator, so it is possible to see where you are in the interface."],
         ["Reduced motion", "Timeline transitions respect the system preference for reduced motion."],
       ];
