@@ -1,6 +1,7 @@
 import { ArrowLeft, Download, LockKeyhole, ShieldCheck, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { FeedmeBrand } from "./components/FeedmeBrand";
+import { ModalBackdrop } from "./components/ModalBackdrop";
 import { translate } from "./i18n";
 
 type AccountDataPageProps = {
@@ -51,21 +52,22 @@ export function AccountDataPage({
   }
 
   return (
-    <main className="account-data-page">
+    <div className="account-data-page">
       <header className="account-data-header">
-        <FeedmeBrand onClick={onLanding} />
+        <FeedmeBrand locale={locale} onClick={onLanding} />
         <button className="text-button account-back" onClick={onBack}>
           <ArrowLeft size={17} />
           {t("Back to children")}
         </button>
       </header>
-      <section className="account-data-hero">
+      <main>
+        <section className="account-data-hero">
         <p className="eyebrow">{t("PRIVACY & DATA")}</p>
         <h1>{t("Your account, your data.")}</h1>
         <p>
           {t("Manage the information tied directly to your Feedme account.")}
         </p>
-      </section>
+        </section>
       <section className="account-data-grid">
         <article className="account-data-card">
           <Download size={22} />
@@ -74,7 +76,7 @@ export function AccountDataPage({
           <p>
             {t("Create a JSON copy of your profile, care-space memberships, and care items you created. It does not include other caregivers’ profiles or private data.")}
           </p>
-          {error && <p className="form-error">{error}</p>}
+          {error && <p className="form-error" role="alert">{error}</p>}
           <button className="primary" onClick={download} disabled={downloading}>
             <Download size={17} />
             {downloading ? t("Preparing export…") : t("Download data")}
@@ -100,8 +102,9 @@ export function AccountDataPage({
           </button>
         </article>
       </section>
+      </main>
       {deleteOpen && (
-        <div className="account-delete-backdrop" role="presentation">
+        <ModalBackdrop onClose={() => setDeleteOpen(false)}>
           <section className="account-delete-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-account-title">
             <button className="close" aria-label={t("Close")} onClick={() => setDeleteOpen(false)}><X size={20} /></button>
             <Trash2 size={22} />
@@ -110,16 +113,16 @@ export function AccountDataPage({
             <p>{t("This cannot be undone. Enter your account email to confirm.")}</p>
             <label>
               {t("Account email")}
-              <input type="email" value={emailConfirmation} onChange={(event) => setEmailConfirmation(event.target.value)} placeholder={email} autoFocus />
+              <input type="email" autoComplete="email" value={emailConfirmation} onChange={(event) => setEmailConfirmation(event.target.value)} placeholder={email} autoFocus />
             </label>
-            {deleteError && <p className="form-error">{deleteError}</p>}
+            {deleteError && <p className="form-error" role="alert">{deleteError}</p>}
             <div className="account-delete-actions">
               <button className="text-button" onClick={() => setDeleteOpen(false)}>{t("Cancel")}</button>
               <button className="danger-primary" onClick={deleteAccount} disabled={deleting || emailConfirmation !== email}>{deleting ? t("Deleting account…") : t("Permanently delete account")}</button>
             </div>
           </section>
-        </div>
+        </ModalBackdrop>
       )}
-    </main>
+    </div>
   );
 }

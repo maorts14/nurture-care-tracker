@@ -142,11 +142,11 @@ const trustLinks = (locale: PublicLocale) =>
       ]) as Array<[string, string]>;
 
 const productScreens = [
-  { id: "timeline", en: "Feedme's shared care timeline", he: "ציר הזמן המשותף של Feedme" },
-  { id: "timeline-history", en: "Feedme care history log", he: "היסטוריית הטיפול של Feedme" },
-  { id: "log-feeding", en: "Log a feeding in Feedme", he: "תיעוד האכלה ב-Feedme" },
-  { id: "insights", en: "Feedme care insights", he: "תובנות הטיפול של Feedme" },
-  { id: "caregivers", en: "Feedme caregiver management", he: "ניהול המטפלים של Feedme" },
+  { id: "timeline", en: "Feedme's shared care timeline, showing today's care events and sidebar navigation.", he: "ציר הזמן המשותף של Feedme, עם אירועי הטיפול של היום ותפריט הניווט." },
+  { id: "timeline-history", en: "Feedme's care history, showing recorded care events in chronological order.", he: "היסטוריית הטיפול של Feedme, עם רשומות טיפול בסדר כרונולוגי." },
+  { id: "log-feeding", en: "The Feedme form for recording a feeding, including time, amount, and feeding method.", he: "טופס תיעוד האכלה ב-Feedme, הכולל זמן, כמות ואופן האכלה." },
+  { id: "insights", en: "Feedme care insights, showing patterns and summaries from recorded care.", he: "תובנות הטיפול של Feedme, המציגות דפוסים וסיכומים מתוך הטיפול שתועד." },
+  { id: "caregivers", en: "Feedme caregiver management, showing the people who have access to a child's care space.", he: "ניהול המטפלים ב-Feedme, המציג את האנשים שיש להם גישה למרחב הטיפול של הילד." },
 ] as const;
 
 function ProductCarousel({ locale }: { locale: PublicLocale }) {
@@ -167,7 +167,10 @@ function ProductCarousel({ locale }: { locale: PublicLocale }) {
     const track = trackRef.current;
     if (!track) return;
     const boundedIndex = Math.max(0, Math.min(index, productScreens.length - 1));
-    track.scrollTo({ left: (he ? -1 : 1) * track.clientWidth * boundedIndex, behavior: "smooth" });
+    track.scrollTo({
+      left: (he ? -1 : 1) * track.clientWidth * boundedIndex,
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+    });
   };
   const selectAdjacentSlide = (side: "left" | "right") => {
     const direction = side === "left" ? (he ? 1 : -1) : (he ? -1 : 1);
@@ -176,11 +179,7 @@ function ProductCarousel({ locale }: { locale: PublicLocale }) {
 
   return (
     <section className="marketing-product-carousel" aria-label={he ? "צילומי מסך של Feedme" : "Feedme product screenshots"}>
-      <div className="marketing-carousel-frame" onClick={(event) => {
-        if (window.matchMedia("(max-width: 760px)").matches) return;
-        const bounds = event.currentTarget.getBoundingClientRect();
-        selectAdjacentSlide(event.clientX < bounds.left + bounds.width / 2 ? "left" : "right");
-      }}>
+      <div className="marketing-carousel-frame">
         <div
           className="marketing-carousel-track"
           dir={he ? "rtl" : "ltr"}
@@ -198,23 +197,21 @@ function ProductCarousel({ locale }: { locale: PublicLocale }) {
             selectSlide(activeIndex + (isNextSlide ? 1 : -1));
           }}
         >
-          {productScreens.map((screen, index) => <div className={`marketing-carousel-slide${index === activeIndex ? " active" : ""}`} data-screen={screen.id} key={screen.id}>
+          {productScreens.map((screen, index) => <div className={`marketing-carousel-slide${index === activeIndex ? " active" : ""}`} data-screen={screen.id} key={screen.id} aria-hidden={index !== activeIndex}>
             {Math.abs(index - activeIndex) <= 1 && <picture>
               <source media="(min-width: 761px)" srcSet={`/product-screenshots/${screen.id}-${screenshotLocale}-desktop.png`} />
               <img loading={index === activeIndex ? "eager" : "lazy"} src={`/product-screenshots/${screen.id}-${screenshotLocale}-mobile.png`} alt={he ? screen.he : screen.en} />
             </picture>}
           </div>)}
         </div>
-        <button className="marketing-carousel-arrow marketing-carousel-arrow-left" type="button" aria-label={he ? "הצילום הקודם" : "Previous screenshot"} onClick={(event) => { event.stopPropagation(); selectAdjacentSlide(he ? "right" : "left"); }}>{he ? <ChevronRight size={23} /> : <ChevronLeft size={23} />}</button>
-        <button className="marketing-carousel-arrow marketing-carousel-arrow-right" type="button" aria-label={he ? "הצילום הבא" : "Next screenshot"} onClick={(event) => { event.stopPropagation(); selectAdjacentSlide(he ? "left" : "right"); }}>{he ? <ChevronLeft size={23} /> : <ChevronRight size={23} />}</button>
+        <button className="marketing-carousel-arrow marketing-carousel-arrow-left" type="button" aria-label={he ? "הצילום הקודם" : "Previous screenshot"} onClick={() => selectAdjacentSlide(he ? "right" : "left")}>{he ? <ChevronRight size={23} /> : <ChevronLeft size={23} />}</button>
+        <button className="marketing-carousel-arrow marketing-carousel-arrow-right" type="button" aria-label={he ? "הצילום הבא" : "Next screenshot"} onClick={() => selectAdjacentSlide(he ? "left" : "right")}>{he ? <ChevronLeft size={23} /> : <ChevronRight size={23} />}</button>
       </div>
-      <div className="marketing-carousel-dots" role="tablist" aria-label={he ? "בחירת צילום מסך" : "Choose a product screenshot"}>
+      <div className="marketing-carousel-dots" role="group" aria-label={he ? "בחירת צילום מסך" : "Choose a product screenshot"}>
         {productScreens.map((screen, index) => <button
           key={screen.id}
           type="button"
-          role="tab"
-          aria-label={he ? screen.he : screen.en}
-          aria-selected={index === activeIndex}
+          aria-label={he ? `צילום מסך ${index + 1} מתוך ${productScreens.length}${index === activeIndex ? ", נוכחי" : ""}` : `Screenshot ${index + 1} of ${productScreens.length}${index === activeIndex ? ", current" : ""}`}
           className={index === activeIndex ? "active" : ""}
           onClick={() => selectSlide(index)}
         />)}
@@ -227,19 +224,20 @@ function Header({ locale, onOpenLanguage, onNavigate, onSignIn, accountName, onS
   const he = locale === "he";
   const [accountOpen, setAccountOpen] = useState(false);
   return <header className="marketing-header">
-    <FeedmeBrand onClick={() => onNavigate("/")} />
+    <FeedmeBrand locale={locale} onClick={() => onNavigate("/")} />
 
     <div className="marketing-header-actions">
       <LanguageControl locale={locale} label={he ? "שפה" : "Language"} onClick={onOpenLanguage} />
       {accountName && onSettings && onSignOut ? <div className="marketing-account">
-        <button className="marketing-account-trigger" onClick={() => setAccountOpen((open) => !open)} aria-expanded={accountOpen} aria-label={he ? "תפריט חשבון" : "Account menu"}>
+        <button className="marketing-account-trigger" onClick={() => setAccountOpen((open) => !open)} aria-expanded={accountOpen} aria-haspopup="true" aria-labelledby="marketing-account-label marketing-account-name">
+          <span id="marketing-account-label" className="sr-only">{he ? "תפריט חשבון" : "Account menu"}</span>
           <span className="marketing-account-avatar" aria-hidden="true">{accountName[0]}</span>
-          <span className="marketing-account-name">{accountName}</span>
+          <span id="marketing-account-name" className="marketing-account-name">{accountName}</span>
           <ChevronDown size={15} aria-hidden="true" />
         </button>
-        {accountOpen && <div className="marketing-account-menu" role="menu">
-          <button role="menuitem" onClick={() => { setAccountOpen(false); onSettings(); }}><Settings size={16} /> {he ? "הגדרות" : "Settings"}</button>
-          <button role="menuitem" className="marketing-account-sign-out" onClick={() => { setAccountOpen(false); onSignOut(); }}><LogOut size={16} /> {he ? "התנתקות" : "Sign out"}</button>
+        {accountOpen && <div className="marketing-account-menu">
+          <button onClick={() => { setAccountOpen(false); onSettings(); }}><Settings size={16} /> {he ? "הגדרות" : "Settings"}</button>
+          <button className="marketing-account-sign-out" onClick={() => { setAccountOpen(false); onSignOut(); }}><LogOut size={16} /> {he ? "התנתקות" : "Sign out"}</button>
         </div>}
       </div> : <button className="marketing-sign-in" onClick={onSignIn}>{he ? "כניסה" : "Sign in"}</button>}
     </div>
@@ -248,7 +246,7 @@ function Header({ locale, onOpenLanguage, onNavigate, onSignIn, accountName, onS
 
 function Footer({ locale, onNavigate }: Pick<PublicSiteProps, "locale" | "onNavigate">) {
   return <footer className="marketing-footer">
-    <div><FeedmeBrand onClick={() => onNavigate("/")} /><p>{locale === "he" ? "טיפול משותף, במקום אחד." : "Shared care, held together."}</p></div>
+    <div><FeedmeBrand locale={locale} onClick={() => onNavigate("/")} /><p>{locale === "he" ? "טיפול משותף, במקום אחד." : "Shared care, held together."}</p></div>
     <div className="marketing-footer-links">
       {trustLinks(locale).map(([label, path]) => <button key={path} onClick={() => onNavigate(path)}>{label}</button>)}
     </div>
@@ -290,10 +288,10 @@ function LegalPage({ page, locale }: Pick<PublicSiteProps, "page" | "locale">) {
   if (page === "accessibility") return <AccessibilityPage locale={locale} />;
   return <>
     <section className="legal-hero">{content.eyebrow && <p className="marketing-eyebrow">{content.eyebrow}</p>}<h1>{content.title}</h1><p>{content.intro}</p></section>
-    <main className="legal-content">
+    <div className="legal-content">
       <aside><strong>{locale === "he" ? "בדף הזה" : "ON THIS PAGE"}</strong>{content.sections.map(([heading]) => <a key={heading} href={`#${heading.toLowerCase().replaceAll(" ", "-")}`}>{heading}</a>)}</aside>
       <article>{content.sections.map(([heading, body]) => <section id={heading.toLowerCase().replaceAll(" ", "-")} key={heading}><h2>{heading}</h2><p>{body}</p></section>)}<div className="legal-callout"><ShieldCheck size={20} /><p>{locale === "he" ? "לפני ההשקה, מדיניות סופית, פרטי קשר ותאריכי תחילה יחליפו את טיוטות הדפים הציבוריים המוכנות האלה." : "Before launch, final policies, contact details and effective dates will replace these prepared public-page drafts."}</p></div></article>
-    </main>
+    </div>
   </>;
 }
 
@@ -304,21 +302,29 @@ function AccessibilityPage({ locale }: { locale: PublicLocale }) {
         ["ניגודיות צבעים קריאה", "חיזקנו את הניגודיות בין טקסט, לחצנים, סמלי פעולה ומצבי מיקוד, כדי לשפר את הקריאות."],
         ["טקסט קריא", "הגדלנו טקסט תפעולי קטן וחיזקנו צבעי טקסט משניים, כדי שהמידע היומיומי יהיה נוח יותר לקריאה."],
         ["תמיכה בעברית ובאנגלית", "הממשק מתאים את השפה ואת הכיוון שלו לבחירת המשתמש, כולל תצוגה מימין לשמאל בעברית."],
-        ["מצב מיקוד נראה לעין", "בקרות שנבחרות בעזרת מקלדת מקבלות סימון מיקוד ברור, כדי שיהיה אפשר לראות היכן נמצאים בממשק."],
-        ["הפחתת תנועה", "המעברים בציר הזמן מכבדים את העדפת המערכת להפחתת תנועה."],
+        ["מקלדת ומצב מיקוד", "אפשר להגיע לפעולות באמצעות המקלדת, לראות סימון מיקוד ברור ולדלג ישירות לתוכן הראשי."],
+        ["חלונות קופצים", "חלונות קופצים שומרים את המיקוד בתוכם, נסגרים ב־Esc ומחזירים את המיקוד לפעולה שפתחה אותם."],
+        ["טפסים ומשוב", "שדות הטופס מקבלים תוויות ברורות, השלמה אוטומטית היכן שמתאים, ושגיאות מוצגות גם כהודעה לקוראי מסך."],
+        ["מבנה ומשמעות", "אנו משתמשים בכותרות, אזורי תוכן ראשיים וכפתורים אמיתיים כדי שטכנולוגיה מסייעת תוכל להבין את הממשק."],
+        ["כפתורים", "הכפתורים באפליקציה מותאמים בגודלם כדי לדאוג לנוחות השימוש בהם."],
+        ["הפחתת תנועה", "המעברים והאנימציות מכבדים את העדפת המערכת להפחתת תנועה."],
       ]
     : [
         ["Readable color contrast", "We strengthened contrast for text, buttons, action icons, and focus indicators to improve readability."],
         ["Readable text", "We increased small operational text and strengthened secondary text colors so everyday information is easier to read."],
         ["English and Hebrew support", "The interface follows the user’s selected language and direction, including right-to-left presentation in Hebrew."],
-        ["Visible focus", "Controls selected with a keyboard receive a clear focus indicator, so it is possible to see where you are in the interface."],
-        ["Reduced motion", "Timeline transitions respect the system preference for reduced motion."],
+        ["Keyboard and visible focus", "Actions can be reached by keyboard and show a clear focus indicator."],
+        ["Dialogs", "Dialogs keep keyboard focus inside, close with Esc, and return focus to the control that opened them."],
+        ["Forms and feedback", "Form fields have clear labels, appropriate autocomplete support, and errors are announced to screen readers."],
+        ["Structure and meaning", "We use headings and real buttons so assistive technology can understand the interface."],
+        ["Buttons", "Buttons are sized to make them comfortable to use."],
+        ["Reduced motion", "Transitions and animations respect the system preference for reduced motion."],
       ];
   return <>
     <section className="legal-hero"><h1>{content.title}</h1><p>{content.intro}</p></section>
-    <main className="accessibility-content">
+    <div className="accessibility-content">
       <ol>{principles.map(([heading, body]) => <li key={heading}><h2>{heading}</h2><p>{body}</p></li>)}</ol>
-    </main>
+    </div>
   </>;
 }
 
@@ -351,7 +357,7 @@ function AboutPage({ locale }: { locale: PublicLocale }) {
       ];
   return <>
     <section className="legal-hero about-hero"><p className="marketing-eyebrow">{he ? "אודות FEEDME" : "ABOUT FEEDME"}</p><h1>{heroTitle}</h1><p>{heroCopy[0]}<br /><br />{heroCopy[1]}</p></section>
-    <main className="about-content"><p>{story[0]}<br /><br />{story[1]}<br /><br />{story[2]}<br /><br />{story[3]}</p></main>
+    <div className="about-content"><p>{story[0]}<br /><br />{story[1]}<br /><br />{story[2]}<br /><br />{story[3]}</p></div>
   </>;
 }
 
@@ -360,7 +366,7 @@ function ContactPage({ content, locale }: { content: (typeof pageByPath)["contac
   const whatsappMessage = he ? "היי, יש לי שאלה לגבי Feedme" : "Hi, I have a question about Feedme";
   return <>
     <section className="legal-hero"><p className="marketing-eyebrow">{content.eyebrow}</p><h1>{content.title}</h1><p>{content.intro}</p></section>
-    <main className="contact-content">
+    <div className="contact-content">
       <a className="contact-action" href="mailto:maorts14@gmail.com">
         <Mail aria-hidden="true" />
         <span><small>{he ? "אימייל" : "Email"}</small><strong dir="ltr">maorts14@gmail.com</strong></span>
@@ -369,7 +375,7 @@ function ContactPage({ content, locale }: { content: (typeof pageByPath)["contac
         <WhatsAppIcon />
         <span><small>WhatsApp</small><strong dir="ltr">+972 50 332 9996</strong></span>
       </a>
-    </main>
+    </div>
   </>;
 }
 
@@ -382,9 +388,9 @@ function WhatsAppIcon() {
 
 export function PublicSite({ page, locale, onLocale, onNavigate, onSignIn, accountName, onSettings, onSignOut }: PublicSiteProps) {
   const [languageOpen, setLanguageOpen] = useState(false);
-  return <div className="marketing-shell" dir={locale === "he" ? "rtl" : "ltr"}>
+  return <div className="marketing-shell" lang={locale} dir={locale === "he" ? "rtl" : "ltr"}>
     <Header locale={locale} onOpenLanguage={() => setLanguageOpen(true)} onNavigate={onNavigate} onSignIn={onSignIn} accountName={accountName} onSettings={onSettings} onSignOut={onSignOut} />
-    {page === "landing" ? <Landing locale={locale} onNavigate={onNavigate} onSignIn={onSignIn} /> : <LegalPage page={page} locale={locale} />}
+    <main>{page === "landing" ? <Landing locale={locale} onNavigate={onNavigate} onSignIn={onSignIn} /> : <LegalPage page={page} locale={locale} />}</main>
     <Footer locale={locale} onNavigate={onNavigate} />
     {languageOpen && <LanguagePicker locale={locale} onClose={() => setLanguageOpen(false)} onSelect={(nextLocale) => { onLocale(nextLocale); setLanguageOpen(false); }} />}
   </div>;
@@ -392,7 +398,7 @@ export function PublicSite({ page, locale, onLocale, onNavigate, onSignIn, accou
 
 export function HelpLegalPanel({ locale, onNavigate, onClose }: { locale: PublicLocale; onNavigate: (path: string) => void; onClose: () => void }) {
   const he = locale === "he";
-  return <div className="help-legal-panel" dir={he ? "rtl" : "ltr"}>
+  return <div className="help-legal-panel" role="dialog" aria-modal="true" aria-label={he ? "עזרה ומשפטי" : "Help and legal"} dir={he ? "rtl" : "ltr"}>
     <div><div><p className="marketing-eyebrow">{he ? "עזרה ומשפטי" : "HELP & LEGAL"}</p><h2>{he ? "עזרה למרחב המשפחתי שלכם." : "Help for your family space."}</h2></div><button className="icon-button" onClick={onClose} aria-label={he ? "סגירת עזרה ומשפטי" : "Close help and legal"}>×</button></div>
     <p>{he ? "מידע על המוצר ודפים משפטיים זמינים מכל מקום ב-Feedme." : "Reach the product information and legal pages from anywhere in Feedme."}</p>
     <div className="help-legal-links"><button onClick={() => onNavigate("/contact")}><Users size={18} /> {he ? "יצירת קשר ותמיכה" : "Contact & support"}<ChevronRight size={17} /></button>{trustLinks(locale).map(([label, path]) => <button key={path} onClick={() => onNavigate(path)}>{path === "/privacy" ? <LockKeyhole size={18} /> : path === "/terms" ? <FileText size={18} /> : path === "/accessibility" ? <Eye size={18} /> : <ShieldCheck size={18} />} {label}<ChevronRight size={17} /></button>)}</div>

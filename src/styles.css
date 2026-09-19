@@ -159,9 +159,10 @@ body {
 .marketing-carousel-slide img { object-fit: cover; object-position: top; border-radius: 19px; opacity: .76; transform: scale(.965); transition: opacity 260ms ease, transform 340ms cubic-bezier(.22, 1, .36, 1); }
 .marketing-carousel-slide.active img { opacity: 1; transform: scale(1); }
 .marketing-carousel-dots { display: flex; justify-content: center; gap: 8px; margin-top: 15px; }
-.marketing-carousel-dots button { width: 7px; height: 7px; padding: 0; border-radius: 999px; background: #cfc8c0; transition: width 220ms cubic-bezier(.22, 1, .36, 1), background 180ms ease, transform 180ms ease; }
-.marketing-carousel-dots button:hover { transform: scale(1.18); }
-.marketing-carousel-dots button.active { width: 20px; background: #526cdb; }
+.marketing-carousel-dots button { position: relative; width: 24px; height: 24px; padding: 0; background: transparent; }
+.marketing-carousel-dots button::before { content: ""; display: block; width: 7px; height: 7px; margin: auto; border-radius: 999px; background: #cfc8c0; transition: width 220ms cubic-bezier(.22, 1, .36, 1), background 180ms ease, transform 180ms ease; }
+.marketing-carousel-dots button:hover::before { transform: scale(1.18); }
+.marketing-carousel-dots button.active::before { width: 20px; background: #526cdb; }
 .marketing-carousel-arrow { position: absolute; z-index: 2; top: 50%; display: grid; width: 30px; height: 40px; place-items: center; border-radius: 8px; background: #302a25; color: #fff; transform: translateY(-50%); transition: background 180ms ease; }
 .marketing-carousel-arrow:hover { background: #1f1a17; }
 .marketing-carousel-arrow-left { inset-inline-start: 12px; }
@@ -277,6 +278,8 @@ textarea {
   font: inherit;
 }
 button {
+  min-width: 24px;
+  min-height: 24px;
   cursor: pointer;
   border: 0;
   background: none;
@@ -389,7 +392,6 @@ html[dir="rtl"] .sign-in .eyebrow { font-family: Heebo, sans-serif; font-size: c
 .account-data-next { background: #f1eee8; }
 .account-data-next > svg { color: #526cdb; }
 .danger-text { color: #b94332; font-weight: 800; }
-.account-delete-backdrop { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 20px; background: #33231c7a; backdrop-filter: blur(5px); }
 .account-delete-dialog { position: relative; width: min(470px, 100%); padding: 32px; border: 1px solid #e7dfd5; border-radius: 18px; background: #fffdf9; box-shadow: 0 26px 65px #2c1c1140; }
 .account-delete-dialog > svg { color: #c24635; }
 .account-delete-dialog h2 { margin: 8px 0; font-size: 27px; letter-spacing: -1px; }
@@ -653,9 +655,11 @@ html[dir="rtl"] .sign-in .eyebrow { font-family: Heebo, sans-serif; font-size: c
   min-height: 100vh;
   display: grid;
   grid-template-columns: 242px minmax(0, 1fr);
+  grid-template-areas: "sidebar workspace";
   background: #fbfaf8;
 }
 .sidebar {
+  grid-area: sidebar;
   background: #f0ede7;
   padding: 30px 16px 18px;
   display: flex;
@@ -845,6 +849,7 @@ nav em {
   color: var(--color-primary-hover);
 }
 .workspace {
+  grid-area: workspace;
   min-width: 0;
   padding: 34px clamp(26px, 5vw, 72px) 55px;
 }
@@ -1078,6 +1083,14 @@ nav em {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
   .timeline-list-content.from-left,
   .timeline-list-content.from-right {
     animation: none;
@@ -1109,6 +1122,7 @@ nav em {
   font-weight: 600;
   scroll-snap-align: start;
   white-space: nowrap;
+  cursor: pointer;
 }
 .timeline-filter-tab.active {
   border-color: var(--color-primary);
@@ -1122,6 +1136,10 @@ nav em {
 .timeline-filter-tab:hover:not(.active) {
   border-color: #cfc6bc;
   background: #fff;
+}
+.timeline-filter-tab:focus-within {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 .timeline-date-divider {
   display: grid;
@@ -1147,13 +1165,24 @@ nav em {
   display: grid;
   grid-template-columns: 62px 46px 1fr auto;
   position: relative;
+  border-radius: 10px;
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+.event:hover,
+.event:focus-within {
+  background: #fff4ef;
+  box-shadow: 0 0 0 1px #f4b19d, 0 6px 18px #b6573329;
 }
 .event-open-detail {
+  padding: 0;
+  text-align: start;
   cursor: pointer;
   transition: background-color 140ms ease, box-shadow 140ms ease;
 }
 .event-open-detail:hover {
-  background: #f3eee8;
+  color: var(--color-primary-hover);
+  border-radius: 6px;
+  background: #fff1ec;
   box-shadow: inset 3px 0 0 var(--color-primary);
 }
 .event-open-detail:focus-visible {
@@ -1200,9 +1229,10 @@ nav em {
   align-items: baseline;
   gap: 7px;
 }
-.event h3 {
+.event-record-title {
   font-size: calc(14px + var(--ui-text-scale));
   margin: 0;
+  font-weight: 700;
 }
 .event-title .feeding-total {
   color: #302c28;
@@ -1353,13 +1383,24 @@ nav em {
   padding: 14px 0;
   align-items: center;
   border-top: 1px solid #e2ddd5;
+  border-radius: 10px;
+  transition: background-color 140ms ease, box-shadow 140ms ease;
+}
+.due-item:hover,
+.due-item:focus-within {
+  background: #fff4ef;
+  box-shadow: 0 0 0 1px #f4b19d, 0 6px 18px #b6573329;
 }
 .due-item-open-detail {
+  padding: 0;
+  text-align: start;
   cursor: pointer;
   transition: background-color 140ms ease, box-shadow 140ms ease;
 }
 .due-item-open-detail:hover {
-  background: #eee9e2;
+  color: var(--color-primary-hover);
+  border-radius: 6px;
+  background: #fff1ec;
   box-shadow: inset 3px 0 0 var(--color-primary);
 }
 .due-item-open-detail:focus-visible {
@@ -1380,7 +1421,7 @@ nav em {
   color: var(--color-success);
   background: #d9f1eb;
 }
-.due-item h3,
+.due-item-title,
 .care-gap h3 {
   margin: 0;
   font-size: calc(14px + var(--ui-text-scale));
@@ -1612,6 +1653,10 @@ nav em {
   position: absolute;
   right: 17px;
   top: 17px;
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
   color: #413d39;
 }
 .log-modal > .close {

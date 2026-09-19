@@ -26,18 +26,17 @@ export function SidebarAccount({
         className="sidebar-account-trigger"
         onClick={() => setIsOpen((open) => !open)}
         aria-expanded={isOpen}
-        aria-haspopup="menu"
+        aria-haspopup="true"
       >
-        <span className="avatar you">{displayName[0]}</span>
+        <span className="avatar you" aria-hidden="true">{displayName[0]}</span>
         <strong>{displayName}</strong>
         <ChevronDown size={16} aria-hidden="true" />
       </button>
       {isOpen && (
-        <div className="sidebar-account-menu" role="menu">
+        <div className="sidebar-account-menu">
           {onSettings && settingsLabel && (
             <button
               type="button"
-              role="menuitem"
               onClick={() => {
                 closeMenu();
                 onSettings();
@@ -49,7 +48,6 @@ export function SidebarAccount({
           )}
           <button
             type="button"
-            role="menuitem"
             onClick={() => {
               closeMenu();
               onSignOut();

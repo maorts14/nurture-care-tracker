@@ -20,12 +20,12 @@ export function CreateChildModal({
   const t = (text: string) => translate(locale, text);
   return (
     <ModalBackdrop onClose={onClose}>
-      <form className="log-modal create-child-modal" onSubmit={onSubmit}>
-        <button type="button" className="close" onClick={onClose}>
+      <form className="log-modal create-child-modal" role="dialog" aria-modal="true" aria-labelledby="create-child-title" onSubmit={onSubmit}>
+        <button type="button" className="close" aria-label={t("Close")} onClick={onClose}>
           <X size={20} />
         </button>
         <p className="eyebrow">{t("NEW CHILD PROFILE")}</p>
-        <h2>{t("Add a child")}</h2>
+        <h2 id="create-child-title">{t("Add a child")}</h2>
         <p className="time-hint">
           {t("You can add more children and invite caregivers later.")}
         </p>
@@ -41,7 +41,7 @@ export function CreateChildModal({
           {t("Birth date")} <small>{t("(optional)")}</small>
           <input name="birthDate" type="date" />
         </label>
-        {error && <p className="form-error">{error}</p>}
+        {error && <p className="form-error" role="alert">{error}</p>}
         <button className="primary submit">{t("Create child")}</button>
       </form>
     </ModalBackdrop>

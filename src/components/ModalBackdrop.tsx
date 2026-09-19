@@ -1,4 +1,4 @@
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 
 type ModalBackdropProps = {
   children: ReactNode;
@@ -51,11 +51,56 @@ function useModalScrollLock() {
 
 export function ModalBackdrop({ children, onClose }: ModalBackdropProps) {
   useModalScrollLock();
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    triggerRef.current = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const focusable = () => Array.from(
+      backdropRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    );
+    const initialFocus = backdropRef.current?.querySelector<HTMLElement>("[autofocus]") ?? focusable()[0];
+    requestAnimationFrame(() => initialFocus?.focus());
+
+    return () => {
+      const trigger = triggerRef.current;
+      if (trigger && document.contains(trigger)) trigger.focus();
+    };
+  }, []);
+
   return (
     <div
+      ref={backdropRef}
       className="modal-backdrop"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          onClose();
+          return;
+        }
+        if (event.key !== "Tab") return;
+        const items = Array.from(
+          event.currentTarget.querySelectorAll<HTMLElement>(
+            'a[href], button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+          ),
+        );
+        if (!items.length) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
       }}
     >
       {children}

@@ -11,6 +11,16 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      (() => {
+        const locale = localStorage.getItem("feedme_locale") === "he" || navigator.language.startsWith("he") ? "he" : "en";
+        document.documentElement.lang = locale;
+        document.documentElement.dir = locale === "he" ? "rtl" : "ltr";
+        const appRoot = document.getElementById("root");
+        appRoot.lang = locale;
+        appRoot.dir = locale === "he" ? "rtl" : "ltr";
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

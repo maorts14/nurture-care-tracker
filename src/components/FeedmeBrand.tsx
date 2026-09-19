@@ -1,9 +1,10 @@
 type FeedmeBrandProps = {
   className?: string;
+  locale?: "en" | "he";
   onClick?: () => void;
 };
 
-export function FeedmeBrand({ className = "", onClick }: FeedmeBrandProps) {
+export function FeedmeBrand({ className = "", locale = "en", onClick }: FeedmeBrandProps) {
   const content = (
     <>
       <span className="brand-mark" aria-hidden="true">
@@ -25,7 +26,7 @@ export function FeedmeBrand({ className = "", onClick }: FeedmeBrandProps) {
       <button
         className={["brand", "brand-link", className].filter(Boolean).join(" ")}
         onClick={onClick}
-        aria-label="Go to home"
+        aria-label={locale === "he" ? "מעבר לדף הבית" : "Go to home"}
       >
         {content}
       </button>
