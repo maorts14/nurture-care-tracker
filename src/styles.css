@@ -1175,16 +1175,12 @@ nav em {
 }
 .event {
   min-height: 83px;
+  margin-inline: 3px;
   display: grid;
   grid-template-columns: 62px 46px 1fr auto;
   position: relative;
   border-radius: 10px;
   transition: background-color 140ms ease, box-shadow 140ms ease;
-}
-.event:hover,
-.event:focus-within {
-  background: #fff4ef;
-  box-shadow: 0 0 0 1px #f4b19d, 0 6px 18px #b6573329;
 }
 .event-open-detail {
   padding: 0;
@@ -1192,17 +1188,12 @@ nav em {
   cursor: pointer;
   transition: background-color 140ms ease, box-shadow 140ms ease;
 }
-.event-open-detail:hover {
-  color: var(--color-primary-hover);
-  border-radius: 6px;
-  background: #fff1ec;
-  box-shadow: inset 3px 0 0 var(--color-primary);
-}
 .event-open-detail:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 4px;
   border-radius: 8px;
 }
+[role="dialog"]:focus { outline: 0; }
 .event time {
   font: calc(13px + var(--ui-text-scale)) "DM Mono";
   color: #413d39;
@@ -1399,22 +1390,11 @@ nav em {
   border-radius: 10px;
   transition: background-color 140ms ease, box-shadow 140ms ease;
 }
-.due-item:hover,
-.due-item:focus-within {
-  background: #fff4ef;
-  box-shadow: 0 0 0 1px #f4b19d, 0 6px 18px #b6573329;
-}
 .due-item-open-detail {
   padding: 0;
   text-align: start;
   cursor: pointer;
   transition: background-color 140ms ease, box-shadow 140ms ease;
-}
-.due-item-open-detail:hover {
-  color: var(--color-primary-hover);
-  border-radius: 6px;
-  background: #fff1ec;
-  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 .due-item-open-detail:focus-visible {
   outline: 2px solid var(--color-primary);
@@ -3569,6 +3549,20 @@ small,
 }
 
 @media (hover: hover) and (pointer: fine) {
+  .event:hover,
+  .due-item:hover {
+    background: #fff4ef;
+    box-shadow: 0 0 0 1px #f4b19d, 0 6px 18px #b6573329;
+  }
+
+  .event-open-detail:hover,
+  .due-item-open-detail:hover {
+    color: var(--color-primary-hover);
+    border-radius: 6px;
+    background: #fff1ec;
+    box-shadow: inset 3px 0 0 var(--color-primary);
+  }
+
   :where(button:not(:disabled):not(.primary):not(.nav-active):not(.active):not(.selected):not(.check)):hover {
     background-color: #eee9e2;
     box-shadow: 0 1px 0 #d9d2c9;

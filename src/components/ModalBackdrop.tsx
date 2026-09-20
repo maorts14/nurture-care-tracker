@@ -63,7 +63,9 @@ export function ModalBackdrop({ children, onClose }: ModalBackdropProps) {
         'a[href], button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
       ) ?? [],
     );
-    const initialFocus = backdropRef.current?.querySelector<HTMLElement>("[autofocus]") ?? focusable()[0];
+    const dialog = backdropRef.current?.querySelector<HTMLElement>('[role="dialog"]');
+    if (dialog) dialog.tabIndex = -1;
+    const initialFocus = backdropRef.current?.querySelector<HTMLElement>("[autofocus]") ?? dialog ?? focusable()[0];
     requestAnimationFrame(() => initialFocus?.focus());
 
     return () => {
@@ -94,7 +96,11 @@ export function ModalBackdrop({ children, onClose }: ModalBackdropProps) {
         if (!items.length) return;
         const first = items[0];
         const last = items[items.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
+        const dialog = backdropRef.current?.querySelector<HTMLElement>('[role="dialog"]');
+        if (document.activeElement === dialog) {
+          event.preventDefault();
+          (event.shiftKey ? last : first).focus();
+        } else if (event.shiftKey && document.activeElement === first) {
           event.preventDefault();
           last.focus();
         } else if (!event.shiftKey && document.activeElement === last) {
