@@ -60,7 +60,6 @@ const hebrew: Record<string, string> = {
   Delete: "מחיקה",
   "Declare care gap": "הכרזת הפסקת טיפול",
   "Invite caregiver": "הזמנת מטפל",
-  "QUICK LOG": "תיעוד מהיר",
   "What happened?": "מה קרה?",
   When: "מתי",
   Note: "הערה",

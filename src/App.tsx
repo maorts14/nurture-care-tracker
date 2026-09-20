@@ -1499,7 +1499,17 @@ export default function App() {
                       <span>{timelineDayFormatter.format(new Date(event.event_time))}</span>
                     </div>
                   )}
-                  <article className="event">
+                  <article
+                    className="event"
+                    onClick={(clickEvent) => {
+                      if (
+                        timelineSwipeDetected.current ||
+                        (clickEvent.target as HTMLElement).closest("button")
+                      )
+                        return;
+                      openLog(event);
+                    }}
+                  >
                     <time>{clock(event.event_time, user.locale)}</time>
                     <span className="event-line">
                       <i
@@ -2014,7 +2024,14 @@ function UpcomingList({
       {reminders.length ? (
         <div className="upcoming-items">
           {reminders.map((reminder) => (
-            <article className="due-item" key={reminder.id}>
+            <article
+              className="due-item"
+              key={reminder.id}
+              onClick={(clickEvent) => {
+                if ((clickEvent.target as HTMLElement).closest("button")) return;
+                onSelect(reminder);
+              }}
+            >
               <span className="due-icon">
                 {reminder.kind === "one_time" ? (
                   <HeartPulse size={17} />
@@ -2126,7 +2143,6 @@ function LogModal({
         <button type="button" className="close" aria-label={t("Close")} onClick={onClose}>
           <X size={20} />
         </button>
-        {!editing && <p className="eyebrow">{t("QUICK LOG")}</p>}
         <h2>{t(editing ? "Edit care record" : "What happened?")}</h2>
         {createdBy && (
           <div className="log-created-by">
