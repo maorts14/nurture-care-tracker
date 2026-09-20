@@ -2143,7 +2143,6 @@ function LogModal({
         <button type="button" className="close" aria-label={t("Close")} onClick={onClose}>
           <X size={20} />
         </button>
-        {!editing && <p className="eyebrow">{t("QUICK LOG")}</p>}
         <h2>{t(editing ? "Edit care record" : "What happened?")}</h2>
         {createdBy && (
           <div className="log-created-by">
