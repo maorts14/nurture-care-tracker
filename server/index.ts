@@ -245,6 +245,133 @@ app.get("/api/me", async (request, response) => {
   }
   response.json(result.rows[0]);
 });
+app.get("/api/me/export", async (request, response) => {
+  const session = requireSession(request, response);
+  if (!session) return;
+  const [profile, memberships, activityLogs, careGaps, notes, comments, invitations] =
+    await Promise.all([
+      pool.query(
+        "SELECT id, email, display_name, locale, email_verified_at, created_at FROM app_user WHERE id = $1",
+        [session.userId],
+      ),
+      pool.query(
+        `SELECT child.id AS child_id, child.name AS child_name, child.timezone, child.birth_date, membership.role, membership.joined_at
+         FROM child_membership AS membership
+         JOIN child ON child.id = membership.child_id
+         WHERE membership.user_id = $1
+         ORDER BY membership.joined_at`,
+        [session.userId],
+      ),
+      pool.query(
+        `SELECT log.id, log.child_id, child.name AS child_name, activity.name AS activity_name, log.event_time, log.event_timezone, log.field_values, log.note, log.created_at
+         FROM activity_log AS log
+         JOIN child ON child.id = log.child_id
+         JOIN activity_definition AS activity ON activity.id = log.activity_id
+         WHERE log.created_by = $1
+         ORDER BY log.created_at`,
+        [session.userId],
+      ),
+      pool.query(
+        "SELECT id, child_id, starts_at, ends_at, reason, created_at FROM care_gap WHERE created_by = $1 ORDER BY created_at",
+        [session.userId],
+      ),
+      pool.query(
+        "SELECT id, child_id, body, visibility, created_at FROM child_note WHERE created_by = $1 ORDER BY created_at",
+        [session.userId],
+      ),
+      pool.query(
+        `SELECT comment.id, comment.log_id, log.child_id, comment.body, comment.created_at, comment.updated_at
+         FROM log_comment AS comment
+         JOIN activity_log AS log ON log.id = comment.log_id
+         WHERE comment.created_by = $1
+         ORDER BY comment.created_at`,
+        [session.userId],
+      ),
+      pool.query(
+        "SELECT id, child_id, email, role, accepted_at, expires_at, created_at FROM child_invitation WHERE invited_by = $1 ORDER BY created_at",
+        [session.userId],
+      ),
+    ]);
+  response
+    .attachment("feedme-account-data.json")
+    .json({
+      exported_at: new Date().toISOString(),
+      profile: profile.rows[0],
+      memberships: memberships.rows,
+      activity_logs_created_by_you: activityLogs.rows,
+      care_gaps_created_by_you: careGaps.rows,
+      notes_created_by_you: notes.rows,
+      comments_created_by_you: comments.rows,
+      invitations_created_by_you: invitations.rows,
+    });
+});
+app.delete("/api/me", async (request, response) => {
+  const session = requireSession(request, response);
+  if (!session) return;
+  const { emailConfirmation } = request.body as { emailConfirmation: string };
+  const client = await pool.connect();
+  const sharedChildIds: string[] = [];
+  try {
+    await client.query("BEGIN");
+    const profile = await client.query<{ email: string }>(
+      "SELECT email FROM app_user WHERE id = $1 FOR UPDATE",
+      [session.userId],
+    );
+    if (profile.rowCount !== 1) {
+      await client.query("ROLLBACK");
+      response.status(401).json({ error: "Sign in is required" });
+      return;
+    }
+    if (emailConfirmation !== profile.rows[0].email) {
+      await client.query("ROLLBACK");
+      response.status(400).json({ error: "Enter your account email to confirm deletion" });
+      return;
+    }
+    const memberships = await client.query<{
+      child_id: string;
+      role: "owner" | "care_manager" | "caregiver" | "viewer";
+    }>(
+      "SELECT child_id, role FROM child_membership WHERE user_id = $1 FOR UPDATE",
+      [session.userId],
+    );
+    for (const member of memberships.rows) {
+      if (member.role !== "owner") {
+        sharedChildIds.push(member.child_id);
+        continue;
+      }
+      const successor = await client.query<{ user_id: string }>(
+        "SELECT user_id FROM child_membership WHERE child_id = $1 AND user_id <> $2 ORDER BY joined_at ASC LIMIT 1 FOR UPDATE",
+        [member.child_id, session.userId],
+      );
+      if (successor.rowCount) {
+        await client.query(
+          "UPDATE child_membership SET role = 'owner' WHERE child_id = $1 AND user_id = $2",
+          [member.child_id, successor.rows[0].user_id],
+        );
+        sharedChildIds.push(member.child_id);
+      } else {
+        await client.query("DELETE FROM child WHERE id = $1", [member.child_id]);
+      }
+    }
+    await client.query("DELETE FROM child_invitation WHERE invited_by = $1 OR lower(email) = lower($2)", [
+      session.userId,
+      profile.rows[0].email,
+    ]);
+    await client.query("DELETE FROM log_comment WHERE created_by = $1", [session.userId]);
+    await client.query("DELETE FROM child_note WHERE created_by = $1", [session.userId]);
+    await client.query("DELETE FROM child_membership WHERE user_id = $1", [session.userId]);
+    await client.query("DELETE FROM app_user WHERE id = $1", [session.userId]);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
+  for (const childId of sharedChildIds) io.to(childRoom(childId)).emit("timeline:changed");
+  response.clearCookie("nurture_session");
+  response.status(204).end();
+});
 app.get("/api/children", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
@@ -356,7 +483,7 @@ app.post("/api/children", async (request, response) => {
       [id, session.userId],
     );
     await client.query(
-      "INSERT INTO activity_definition (child_id, name, kind, color) VALUES ($1, 'Feeding', 'feeding', '#f3654b'), ($1, 'Diaper change', 'diaper', '#526cdb')",
+      "INSERT INTO activity_definition (child_id, name, kind, color) VALUES ($1, 'Feeding', 'feeding', '#ba5c30'), ($1, 'Diaper change', 'diaper', '#526cdb')",
       [id],
     );
     await client.query(
@@ -530,7 +657,7 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
   }
   const [timeline, insightPreference, activities, fields, reminders, gaps, analyticsRows] = await Promise.all([
     pool.query(
-      `SELECT log.id, log.activity_id, log.event_time, log.event_timezone, log.field_values, log.note, log.created_at, log.created_by AS created_by_id, activity.name AS activity_name, activity.kind, activity.color, author.display_name AS created_by, COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions, comment_preview.comment_count, comment_preview.first_comment, comment_preview.first_comment_author FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id JOIN app_user AS author ON author.id = log.created_by LEFT JOIN LATERAL (SELECT COUNT(*)::int AS comment_count, (array_agg(comment.body ORDER BY comment.created_at, comment.id))[1] AS first_comment, (array_agg(comment_author.display_name ORDER BY comment.created_at, comment.id))[1] AS first_comment_author FROM log_comment AS comment JOIN app_user AS comment_author ON comment_author.id = comment.created_by WHERE comment.log_id = log.id) AS comment_preview ON true WHERE log.child_id = $1 ORDER BY log.event_time DESC LIMIT 100`,
+      `SELECT log.id, log.activity_id, log.event_time, log.event_timezone, log.field_values, log.note, log.created_at, log.created_by AS created_by_id, activity.name AS activity_name, activity.kind, activity.color, COALESCE(author.display_name, 'Deleted caregiver') AS created_by, COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions, comment_preview.comment_count, comment_preview.first_comment, comment_preview.first_comment_author FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id LEFT JOIN app_user AS author ON author.id = log.created_by LEFT JOIN LATERAL (SELECT COUNT(*)::int AS comment_count, (array_agg(comment.body ORDER BY comment.created_at, comment.id))[1] AS first_comment, (array_agg(comment_author.display_name ORDER BY comment.created_at, comment.id))[1] AS first_comment_author FROM log_comment AS comment JOIN app_user AS comment_author ON comment_author.id = comment.created_by WHERE comment.log_id = log.id) AS comment_preview ON true WHERE log.child_id = $1 ORDER BY log.event_time DESC LIMIT 100`,
       [childId],
     ),
     pool.query(
@@ -1066,6 +1193,10 @@ app.post("/api/children/:childId/activities", async (request, response) => {
       metrics?: string[];
     }[];
   };
+  if (!/^#[\da-f]{6}$/i.test(color)) {
+    response.status(400).json({ error: "Activity color must be a six-digit hex color" });
+    return;
+  }
   const access = await membership(childId, session.userId);
   if (!['owner', 'care_manager'].includes(access.rows[0]?.role ?? '')) {
     response.status(403).json({ error: "Owner or care manager access is required" });
@@ -1163,8 +1294,8 @@ app.put("/api/activities/:activityId", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
   const { name, color } = request.body as { name: string; color: string };
-  if (!name.trim() || !color) {
-    response.status(400).json({ error: "Activity name and color are required" });
+  if (!name.trim() || !/^#[\da-f]{6}$/i.test(color)) {
+    response.status(400).json({ error: "Activity name and a six-digit hex color are required" });
     return;
   }
   const updated = await pool.query<{ child_id: string }>(

@@ -318,6 +318,9 @@ export function AnalyticsView({
         <ModalBackdrop onClose={() => setSettingsOpen(false)}>
           <form
             className="log-modal insights-settings-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("Insights settings")}
             onSubmit={async (event) => {
               event.preventDefault();
               await onSaveInsightActivities(settingsActivityIds);
@@ -337,6 +340,7 @@ export function AnalyticsView({
             </div>
             <p>{t("Choose activities to show in Insights.")}</p>
             <fieldset className="insights-activity-options">
+              <legend>{t("Activity")}</legend>
               {dashboard.activities.map((activity) => (
                 <label key={activity.id}>
                   <input
@@ -364,6 +368,9 @@ export function AnalyticsView({
         <ModalBackdrop onClose={() => setExportOpen(false)}>
           <form
             className="log-modal insights-settings-modal insights-export-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("Export insights")}
             onSubmit={(event) => {
               event.preventDefault();
               exportReport();

@@ -1,6 +1,7 @@
-import { FormEvent, Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { AnalyticsView } from "./AnalyticsView";
+import { AccountDataPage } from "./AccountDataPage";
 import { CaregiversPage } from "./CaregiversPage";
 import { NotesPage } from "./NotesPage";
 import { CommentsPage } from "./CommentsPage";
@@ -9,6 +10,7 @@ import { LanguageControl } from "./components/LanguageControl";
 import { LanguagePicker } from "./components/LanguagePicker";
 import { ModalBackdrop } from "./components/ModalBackdrop";
 import { FeedmeBrand } from "./components/FeedmeBrand";
+import { HelpLegalPanel, PublicSite, type PublicPage } from "./PublicSite";
 import { ReminderScheduleFields } from "./components/ReminderScheduleFields";
 import { SidebarAccount } from "./components/SidebarAccount";
 import { TimezoneSelect } from "./components/TimezoneSelect";
@@ -23,6 +25,7 @@ import {
   Droplets,
   FileDown,
   HeartPulse,
+  CircleHelp,
   Menu,
   MessageCircle,
   MoreHorizontal,
@@ -62,7 +65,7 @@ type Event = {
   kind: Activity["kind"];
   color: string;
   created_by: string;
-  created_by_id: string;
+  created_by_id: string | null;
   feeding_portions: FeedingPortion[];
   comment_count?: number;
   first_comment?: string | null;
@@ -187,6 +190,19 @@ const icon = (kind: Activity["kind"]) =>
   ) : (
     <HeartPulse size={17} />
   );
+const accessibleIconColor = (backgroundColor: string) => {
+  const value = /^#([\da-f]{6})$/i.exec(backgroundColor)?.[1];
+  if (!value) return "#000";
+  const luminance = [0, 2, 4].reduce((total, index) => {
+    const channel = parseInt(value.slice(index, index + 2), 16) / 255;
+    const linear =
+      channel <= 0.04045
+        ? channel / 12.92
+        : ((channel + 0.055) / 1.055) ** 2.4;
+    return total + linear * [0.2126, 0.7152, 0.0722][index / 2];
+  }, 0);
+  return luminance > 0.179 ? "#000" : "#fff";
+};
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...options,
@@ -263,6 +279,7 @@ export default function App() {
   const [editingLog, setEditingLog] = useState<Event | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
+  const [helpLegalOpen, setHelpLegalOpen] = useState(false);
   const [timelineActivityId, setTimelineActivityId] = useState<string | null>(null);
   const [timelineSlideDirection, setTimelineSlideDirection] = useState<
     "from-left" | "from-right" | null
@@ -385,9 +402,22 @@ export default function App() {
     [lastFeed?.id, feedReminder?.id],
   );
   const navigate = (path: string, replace = false) => {
-    if (location.pathname !== path)
-      history[replace ? "replaceState" : "pushState"]({}, "", path);
-    setRoutePath(path);
+    const destination = new URL(path, window.location.origin);
+    const current = `${location.pathname}${location.search}${location.hash}`;
+    const next = `${destination.pathname}${destination.search}${destination.hash}`;
+    if (current !== next)
+      history[replace ? "replaceState" : "pushState"]({}, "", next);
+    setRoutePath(destination.pathname);
+    if (destination.hash) {
+      requestAnimationFrame(() =>
+        document
+          .getElementById(destination.hash.slice(1))
+          ?.scrollIntoView({
+            behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+            block: "start",
+          }),
+      );
+    }
   };
   const load = async () => {
     const me = await api<User>("/api/me");
@@ -433,11 +463,6 @@ export default function App() {
   }, []);
   useEffect(() => {
     if (!user) return;
-    if (routePath === "/") {
-      history.replaceState({}, "", "/children");
-      setRoutePath("/children");
-      return;
-    }
     const match = routePath.match(/^\/children\/([^/]+)(?:\/(?:insights|caregivers))?$/);
     if (match) {
       const routeChild = children.find((item) => item.id === match[1]);
@@ -457,9 +482,16 @@ export default function App() {
     const match = routePath.match(/^\/children\/([^/]+)\/caregivers$/);
     if (match) loadMembers(match[1]).catch((cause: Error) => setError(cause.message));
   }, [routePath]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.lang = locale;
     document.documentElement.dir = locale === "he" ? "rtl" : "ltr";
+    const appRoot = document.getElementById("root");
+    if (appRoot) {
+      appRoot.lang = locale;
+      appRoot.dir = locale === "he" ? "rtl" : "ltr";
+    }
+  }, [locale]);
+  useEffect(() => {
     const token = new URLSearchParams(location.search).get("invite");
     if (!token) return;
     api<InvitationPreview>(`/api/invitations/${token}`)
@@ -470,7 +502,29 @@ export default function App() {
       .catch((cause: Error) => {
         if (user) setError(cause.message);
       });
-  }, [user?.id, locale]);
+  }, [user?.id]);
+  useEffect(() => {
+    const titles: Record<string, string> = {
+      "/": locale === "he" ? "טיפול משותף" : "Shared care",
+      "/about": locale === "he" ? "אודות" : "About",
+      "/privacy": locale === "he" ? "פרטיות" : "Privacy",
+      "/terms": locale === "he" ? "תנאים ובטיחות" : "Terms & safety",
+      "/accessibility": locale === "he" ? "נגישות" : "Accessibility",
+      "/contact": locale === "he" ? "יצירת קשר" : "Contact",
+      "/children": locale === "he" ? "ילדים" : "Children",
+      "/account/privacy": locale === "he" ? "פרטיות ונתונים" : "Privacy & data",
+    };
+    const timelineMatch = routePath.match(/^\/children\/[^/]+$/);
+    const insightsMatch = routePath.match(/^\/children\/[^/]+\/insights$/);
+    const caregiversMatch = routePath.match(/^\/children\/[^/]+\/caregivers$/);
+    if (timelineMatch && child)
+      document.title = locale === "he" ? `ציר הזמן של ${child.name}` : `${child.name}’s timeline`;
+    else if (insightsMatch && child)
+      document.title = locale === "he" ? `דפוסי הטיפול של ${child.name}` : `${child.name}’s care patterns`;
+    else if (caregiversMatch)
+      document.title = locale === "he" ? "מטפלים" : "Caregivers";
+    else document.title = titles[routePath] ?? "Feedme";
+  }, [routePath, locale, child?.id, child?.name]);
   const clearInvite = () => {
     const url = new URL(location.href);
     url.searchParams.delete("invite");
@@ -587,6 +641,33 @@ export default function App() {
       body: JSON.stringify({ name }),
     });
     await load();
+  }
+  async function downloadAccountData() {
+    const response = await fetch("/api/me/export", { credentials: "include" });
+    if (!response.ok) {
+      throw new Error(
+        (await response.json().catch(() => ({ error: "Request failed" }))).error,
+      );
+    }
+    const downloadUrl = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = "feedme-account-data.json";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(downloadUrl);
+  }
+  async function deleteAccount(emailConfirmation: string) {
+    await api("/api/me", {
+      method: "DELETE",
+      body: JSON.stringify({ emailConfirmation }),
+    });
+    setUser(null);
+    setChildren([]);
+    setChild(null);
+    setDash(null);
+    navigate("/", true);
   }
   async function deleteChild(item: Child) {
     if (
@@ -952,8 +1033,41 @@ export default function App() {
     setHomeOpen(false);
     navigate("/", true);
   };
+  const publicPage: PublicPage | null =
+    routePath === "/" ? "landing" :
+    routePath === "/about" ? "about" :
+    routePath === "/privacy" ? "privacy" :
+    routePath === "/cookies" ? "privacy" :
+    routePath === "/terms" ? "terms" :
+    routePath === "/security" ? "privacy" :
+    routePath === "/accessibility" ? "accessibility" :
+    routePath === "/contact" ? "contact" : null;
+  if (publicPage)
+    return (
+      <PublicSite
+        page={publicPage}
+        locale={locale}
+        onLocale={setLocale}
+        onNavigate={navigate}
+        onSignIn={() => navigate(user ? "/children" : "/sign-in")}
+        accountName={user?.display_name}
+        onSettings={user ? () => navigate("/account/privacy") : undefined}
+        onSignOut={user ? signOut : undefined}
+      />
+    );
   if (loading)
     return <div className="loading-screen">{t("Loading Feedme…")}</div>;
+  if (routePath === "/account/privacy" && user)
+    return (
+      <AccountDataPage
+        locale={user.locale}
+        email={user.email}
+        onBack={() => navigate("/children")}
+        onLanding={() => navigate("/")}
+        onDownload={downloadAccountData}
+        onDelete={deleteAccount}
+      />
+    );
   if (!user)
     return (
       <div className="sign-in-shell">
@@ -966,7 +1080,7 @@ export default function App() {
             />
           </div>
           <form className="sign-in" onSubmit={login}>
-            <FeedmeBrand />
+            <FeedmeBrand locale={locale} onClick={() => navigate("/")} />
             <p className="eyebrow">{t("SHARED CHILD CARE")}</p>
             <h1>
               {auth === "sign-in"
@@ -986,6 +1100,7 @@ export default function App() {
                 <input
                   value={name}
                   onChange={(event) => setName(event.target.value)}
+                  autoComplete="name"
                   required
                 />
               </label>
@@ -996,6 +1111,7 @@ export default function App() {
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 type="email"
+                autoComplete="email"
                 required
               />
             </label>
@@ -1005,11 +1121,12 @@ export default function App() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 type="password"
+                autoComplete={auth === "sign-in" ? "current-password" : "new-password"}
                 minLength={8}
                 required
               />
             </label>
-            {error && <p className="form-error">{error}</p>}
+            {error && <p className="form-error" role="alert">{error}</p>}
             <button className="primary submit">
               {auth === "sign-in" ? t("Sign in") : t("Create account")}
             </button>
@@ -1068,7 +1185,9 @@ export default function App() {
           onCloseLanguage={() => setLanguageOpen(false)}
           onLocale={setLocale}
           onSignOut={signOut}
-          onHome={() => navigate("/children")}
+          onHome={() => navigate("/")}
+          onPrivacyData={() => navigate("/account/privacy")}
+          onNavigateLegal={navigate}
         />
         {invitePreview && (
           <InvitationPreviewModal
@@ -1094,7 +1213,9 @@ export default function App() {
         onCloseLanguage={() => setLanguageOpen(false)}
         onLocale={setLocale}
         onSignOut={signOut}
-        onHome={() => navigate("/children")}
+        onHome={() => navigate("/")}
+        onPrivacyData={() => navigate("/account/privacy")}
+        onNavigateLegal={navigate}
       />
     );
   if (!dash)
@@ -1141,89 +1262,6 @@ export default function App() {
         aria-label={t("Close navigation")}
         onClick={() => setMobileSidebarOpen(false)}
       />
-      <aside className="sidebar">
-        <FeedmeBrand onClick={() => navigate("/children")} />
-        <label className="child-switch">
-          <span className="avatar">{child.name[0]}</span>
-          <span>
-            <strong>{child.name}</strong>
-            <small>{timeZoneLabel(child.timezone, user.locale)}</small>
-          </span>
-          <select
-            value={child.id}
-            onChange={(event) => navigate(`/children/${event.target.value}`)}
-          >
-            {children.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <nav onClickCapture={() => setMobileSidebarOpen(false)}>
-          <button
-            className={insightsOpen ? "" : "nav-active"}
-            onClick={() => navigate(`/children/${child.id}`)}
-          >
-            <Clock3 size={18} />
-            {t("Timeline")}
-          </button>
-          <button
-            className={insightsOpen ? "nav-active" : ""}
-            onClick={() => navigate(`/children/${child.id}/insights`)}
-          >
-            <Sparkles size={18} />
-            {t("Insights")}
-          </button>
-        </nav>
-        <div
-          className="sidebar-bottom"
-          onClickCapture={() => setMobileSidebarOpen(false)}
-        >
-          {canManage && (
-            <button onClick={() => setPanel("activity")}>
-              <Settings2 size={18} />
-              {t("Manage care")}
-            </button>
-          )}
-          <button onClick={() => setPanel("gap")}>
-            <HeartPulse size={18} />
-            {t("Declare care gap")}
-          </button>
-          {canManage && (
-            <button onClick={() => setPanel("invite")}>
-              <Users size={18} />
-              {t("Invite caregiver")}
-            </button>
-          )}
-          <button
-            className={caregiversOpen ? "nav-active" : ""}
-            onClick={() => navigate(`/children/${child.id}/caregivers`)}
-          >
-            <Users size={18} />
-            {t("Caregivers")}
-          </button>
-          <button onClick={() => navigate("/children")}>
-            <Users size={18} />
-            {t("Children")}
-          </button>
-          <LanguageControl
-            locale={user.locale}
-            label={t("Language")}
-            onClick={() => setLanguageOpen(true)}
-          />
-          <button className="leave-space" onClick={openLeave}>
-            <UserMinus size={18} />
-            {t("Leave care space")}
-          </button>
-          <SidebarAccount
-            displayName={user.display_name}
-            detail={t(dash.role === "care_manager" ? "Care manager" : dash.role)}
-            signOutLabel={t("Sign out")}
-            onSignOut={signOut}
-          />
-        </div>
-      </aside>
       <section className={`workspace ${insightsOpen || caregiversOpen ? "insights-workspace" : ""}`}>
         {insightsOpen ? (
           <AnalyticsView
@@ -1247,7 +1285,7 @@ export default function App() {
           />
         ) : (
           <>
-        <header className="topbar">
+        <div className="topbar">
           <div className="topbar-title">
             <button
               className="mobile-menu"
@@ -1266,7 +1304,16 @@ export default function App() {
           <div className="top-actions">
             <button
               className="icon-button"
+              title={t("Help & legal")}
+              aria-label={t("Help & legal")}
+              onClick={() => setHelpLegalOpen(true)}
+            >
+              <CircleHelp size={18} />
+            </button>
+            <button
+              className="icon-button"
               title={t("Export CSV")}
+              aria-label={t("Export CSV")}
               onClick={() =>
                 window.open(`/api/children/${child.id}/export.csv`, "_blank")
               }
@@ -1294,7 +1341,7 @@ export default function App() {
               </button>
             )}
           </div>
-        </header>
+        </div>
         <section className="summary-strip">
           <div>
             <p>{t("Last feeding")}</p>
@@ -1358,25 +1405,33 @@ export default function App() {
               {t("Notes")}
             </button>
           </div>
-          <div className="timeline-filter-carousel" role="tablist" aria-label={t("Care history")}>
-            <button
+          <div className="timeline-filter-carousel" role="radiogroup" aria-label={t("Care history")}>
+            <label
               className={`timeline-filter-tab ${timelineActivityId === null ? "active" : ""}`}
-              role="tab"
-              aria-selected={timelineActivityId === null}
-              onClick={() => switchTimelineActivity(null)}
             >
-              {t("All")}
-            </button>
+              <input
+                className="sr-only"
+                type="radio"
+                name="timeline-activity-filter"
+                checked={timelineActivityId === null}
+                onChange={() => switchTimelineActivity(null)}
+              />
+              <span>{t("All")}</span>
+            </label>
             {dash.activities.map((activity) => (
-              <button
+              <label
                 className={`timeline-filter-tab ${timelineActivityId === activity.id ? "active" : ""}`}
                 key={activity.id}
-                role="tab"
-                aria-selected={timelineActivityId === activity.id}
-                onClick={() => switchTimelineActivity(activity.id)}
               >
-                {t(activity.name)}
-              </button>
+                <input
+                  className="sr-only"
+                  type="radio"
+                  name="timeline-activity-filter"
+                  checked={timelineActivityId === activity.id}
+                  onChange={() => switchTimelineActivity(activity.id)}
+                />
+                <span>{t(activity.name)}</span>
+              </label>
             ))}
           </div>
           <div
@@ -1444,35 +1499,35 @@ export default function App() {
                       <span>{timelineDayFormatter.format(new Date(event.event_time))}</span>
                     </div>
                   )}
-                  <article
-                    className="event event-open-detail"
-                    tabIndex={0}
-                    role="button"
-                    onClick={() => {
-                      if (timelineSwipeDetected.current) return;
-                      openLog(event);
-                    }}
-                    onKeyDown={(keyboardEvent) => {
-                      if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
-                        keyboardEvent.preventDefault();
-                        openLog(event);
-                      }
-                    }}
-                  >
+                  <article className="event">
                     <time>{clock(event.event_time, user.locale)}</time>
                     <span className="event-line">
-                      <i style={{ background: event.color }}>{icon(event.kind)}</i>
+                      <i
+                        style={{
+                          background: event.color,
+                          color: accessibleIconColor(event.color),
+                        }}
+                      >
+                        {icon(event.kind)}
+                      </i>
                     </span>
                     <div className="event-content">
                       <div className="event-title">
-                        <h3>
-                          {t(event.activity_name)}
-                          {feedingTotal !== null && (
-                            <span className="feeding-total">
-                              · {feedingTotal} {t("ml")}
-                            </span>
-                          )}
-                        </h3>
+                        <p className="event-record-title">
+                          <button
+                            className="event-open-detail"
+                            type="button"
+                            aria-label={`${clock(event.event_time, user.locale)} ${t(event.activity_name)}`}
+                            onClick={() => openLog(event)}
+                          >
+                            {t(event.activity_name)}
+                            {feedingTotal !== null && (
+                              <span className="feeding-total">
+                                · {feedingTotal} {t("ml")}
+                              </span>
+                            )}
+                          </button>
+                        </p>
                         <span>
                           {t("by")} {event.created_by}
                         </span>
@@ -1487,10 +1542,7 @@ export default function App() {
                           {(event.comment_count ?? 0) > 1 && (
                             <button
                               type="button"
-                              onClick={(clickEvent) => {
-                                clickEvent.stopPropagation();
-                                openComments(event);
-                              }}
+                              onClick={() => openComments(event)}
                             >
                               {t("Show more")}
                               <ChevronDown size={13} aria-hidden="true" />
@@ -1505,10 +1557,7 @@ export default function App() {
                           className="more"
                           aria-label={`${t("Edit")} ${t(event.activity_name)}`}
                           title={t("Edit")}
-                          onClick={(clickEvent) => {
-                            clickEvent.stopPropagation();
-                            openLog(event);
-                          }}
+                          onClick={() => openLog(event)}
                         >
                           <Pencil size={16} />
                         </button>
@@ -1517,10 +1566,7 @@ export default function App() {
                         className="more"
                         aria-label={`${t("Comment")} ${t(event.activity_name)}`}
                         title={t("Comment")}
-                        onClick={(clickEvent) => {
-                          clickEvent.stopPropagation();
-                          openComments(event);
-                        }}
+                        onClick={() => openComments(event)}
                       >
                         <MessageCircle size={17} />
                       </button>
@@ -1529,10 +1575,7 @@ export default function App() {
                           className="more delete-log"
                           aria-label={`${t("Delete")} ${t(event.activity_name)}`}
                           title={t("Delete")}
-                          onClick={(clickEvent) => {
-                            clickEvent.stopPropagation();
-                            deleteLog(event);
-                          }}
+                          onClick={() => deleteLog(event)}
                         >
                           <Trash2 size={16} />
                         </button>
@@ -1548,12 +1591,112 @@ export default function App() {
           </>
         )}
       </section>
+      <aside className="sidebar">
+        <FeedmeBrand locale={locale} onClick={() => navigate("/")} />
+        <label className="child-switch">
+          <span className="avatar">{child.name[0]}</span>
+          <span>
+            <strong>{child.name}</strong>
+            <small>{timeZoneLabel(child.timezone, user.locale)}</small>
+          </span>
+          <select
+            value={child.id}
+            onChange={(event) => navigate(`/children/${event.target.value}`)}
+          >
+            {children.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <nav onClickCapture={() => setMobileSidebarOpen(false)}>
+          <button
+            className={insightsOpen ? "" : "nav-active"}
+            onClick={() => navigate(`/children/${child.id}`)}
+          >
+            <Clock3 size={18} />
+            {t("Timeline")}
+          </button>
+          <button
+            className={insightsOpen ? "nav-active" : ""}
+            onClick={() => navigate(`/children/${child.id}/insights`)}
+          >
+            <Sparkles size={18} />
+            {t("Insights")}
+          </button>
+        </nav>
+        <div
+          className="sidebar-bottom"
+          onClickCapture={() => setMobileSidebarOpen(false)}
+        >
+          {canManage && (
+            <button onClick={() => setPanel("activity")}>
+              <Settings2 size={18} />
+              {t("Manage care")}
+            </button>
+          )}
+          <button onClick={() => setPanel("gap")}>
+            <HeartPulse size={18} />
+            {t("Declare care gap")}
+          </button>
+          {canManage && (
+            <button onClick={() => setPanel("invite")}>
+              <Users size={18} />
+              {t("Invite caregiver")}
+            </button>
+          )}
+          <button
+            className={caregiversOpen ? "nav-active" : ""}
+            onClick={() => navigate(`/children/${child.id}/caregivers`)}
+          >
+            <Users size={18} />
+            {t("Caregivers")}
+          </button>
+          <button onClick={() => navigate("/children")}>
+            <Users size={18} />
+            {t("Children")}
+          </button>
+          <button onClick={() => setHelpLegalOpen(true)}>
+            <CircleHelp size={18} />
+            {t("Help & legal")}
+          </button>
+          <LanguageControl
+            locale={user.locale}
+            label={t("Language")}
+            onClick={() => setLanguageOpen(true)}
+          />
+          <button className="leave-space" onClick={openLeave}>
+            <UserMinus size={18} />
+            {t("Leave care space")}
+          </button>
+          <SidebarAccount
+            displayName={user.display_name}
+            settingsLabel={t("Settings")}
+            onSettings={() => navigate("/account/privacy")}
+            signOutLabel={t("Sign out")}
+            onSignOut={signOut}
+          />
+        </div>
+      </aside>
       {languageOpen && (
         <LanguagePicker
           locale={user.locale}
           onClose={() => setLanguageOpen(false)}
           onSelect={setLocale}
         />
+      )}
+      {helpLegalOpen && (
+        <ModalBackdrop onClose={() => setHelpLegalOpen(false)}>
+          <HelpLegalPanel
+            locale={locale}
+            onClose={() => setHelpLegalOpen(false)}
+            onNavigate={(path) => {
+              setHelpLegalOpen(false);
+              navigate(path);
+            }}
+          />
+        </ModalBackdrop>
       )}
       {selectedReminder && (
         <ReminderDetailModal
@@ -1657,7 +1800,7 @@ function LeaveCareSpaceModal({
         : t("Leave care space");
   return (
     <ModalBackdrop onClose={onClose}>
-      <section className="log-modal leave-modal">
+      <section className="log-modal leave-modal" role="dialog" aria-modal="true" aria-label={t("Leave care space confirmation")}>
         <button
           className="close"
           aria-label={t("Close leave confirmation")}
@@ -1701,7 +1844,7 @@ function InvitationPreviewModal({
   }).format(new Date(invitation.created_at));
   return (
     <ModalBackdrop onClose={onClose}>
-      <section className="log-modal invitation-preview">
+      <section className="log-modal invitation-preview" role="dialog" aria-modal="true" aria-label={t("Join a child's care space")}>
         <button
           className="close"
           aria-label={t("Close invitation")}
@@ -1784,7 +1927,7 @@ function ReminderDetailModal({
 
   return (
     <ModalBackdrop onClose={onClose}>
-      <section className="log-modal reminder-detail-modal" role="dialog" aria-modal="true">
+      <section className="log-modal reminder-detail-modal" role="dialog" aria-modal="true" aria-label={reminder.title}>
         {canManage ? (
           <form onSubmit={onSave}>
             {heading}
@@ -1871,19 +2014,7 @@ function UpcomingList({
       {reminders.length ? (
         <div className="upcoming-items">
           {reminders.map((reminder) => (
-            <article
-              className="due-item due-item-open-detail"
-              key={reminder.id}
-              tabIndex={0}
-              role="button"
-              onClick={() => onSelect(reminder)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelect(reminder);
-                }
-              }}
-            >
+            <article className="due-item" key={reminder.id}>
               <span className="due-icon">
                 {reminder.kind === "one_time" ? (
                   <HeartPulse size={17} />
@@ -1892,7 +2023,16 @@ function UpcomingList({
                 )}
               </span>
               <div>
-                <h3>{reminder.title}</h3>
+                <p className="due-item-title">
+                  <button
+                    className="due-item-open-detail"
+                    type="button"
+                    aria-label={`${reminder.title}. ${reminder.kind === "one_time" && reminder.scheduled_for ? clock(reminder.scheduled_for, locale) : `${t("Every")} ${Math.round((reminder.interval_minutes ?? 0) / 60)} ${t("hours after activity")}`}`}
+                    onClick={() => onSelect(reminder)}
+                  >
+                    {reminder.title}
+                  </button>
+                </p>
                 <p>
                   {reminder.kind === "one_time" && reminder.scheduled_for
                     ? clock(reminder.scheduled_for, locale)
@@ -1905,10 +2045,7 @@ function UpcomingList({
                     className="due-log"
                     aria-label={`${t("Log activity")} ${reminder.title}`}
                     title={`${t("Log activity")} ${reminder.title}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onLogActivity(reminder.activity_id!);
-                    }}
+                    onClick={() => onLogActivity(reminder.activity_id!)}
                   >
                     <ClipboardPlus size={14} />
                   </button>
@@ -1918,10 +2055,7 @@ function UpcomingList({
                   aria-label={`${t("Mark complete")} ${reminder.title}`}
                   title={`${t("Mark complete")} ${reminder.title}`}
                   data-tooltip={t("Mark complete")}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onComplete(reminder);
-                  }}
+                  onClick={() => onComplete(reminder)}
                 >
                   <Check size={13} />
                 </button>
@@ -1930,10 +2064,7 @@ function UpcomingList({
                     className="more"
                     aria-label={`${t("Delete")} ${reminder.title}`}
                     title={`${t("Delete")} ${reminder.title}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onDelete(reminder);
-                    }}
+                    onClick={() => onDelete(reminder)}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -1991,8 +2122,8 @@ function LogModal({
   const t = (text: string) => translate(locale, text);
   return (
     <ModalBackdrop onClose={onClose}>
-      <form className="log-modal" onSubmit={onSubmit}>
-        <button type="button" className="close" onClick={onClose}>
+      <form className="log-modal" role="dialog" aria-modal="true" aria-label={t(editing ? "Edit care record" : "What happened?")} onSubmit={onSubmit}>
+        <button type="button" className="close" aria-label={t("Close")} onClick={onClose}>
           <X size={20} />
         </button>
         {!editing && <p className="eyebrow">{t("QUICK LOG")}</p>}
@@ -2012,7 +2143,14 @@ function LogModal({
               disabled={!editable}
               onClick={() => onActivity(item.id)}
             >
-              <i style={{ background: item.color }}>{icon(item.kind)}</i>
+              <i
+                style={{
+                  background: item.color,
+                  color: accessibleIconColor(item.color),
+                }}
+              >
+                {icon(item.kind)}
+              </i>
               {t(item.name)}
             </button>
           ))}
@@ -2203,13 +2341,18 @@ function HomeSidebar({
   onHome,
   onOpenLanguage,
   onSignOut,
+  onPrivacyData,
+  onNavigateLegal,
 }: {
   user: User;
   onHome: () => void;
   onOpenLanguage: () => void;
   onSignOut: () => void;
+  onPrivacyData: () => void;
+  onNavigateLegal: (path: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [helpLegalOpen, setHelpLegalOpen] = useState(false);
   usePageScrollLock(open);
   const close = () => setOpen(false);
   const t = (text: string) => translate(user.locale, text);
@@ -2228,8 +2371,8 @@ function HomeSidebar({
         aria-label={t("Close navigation")}
         onClick={close}
       />
-      <aside className={`home-sidebar ${open ? "open" : ""}`}>
-        <FeedmeBrand onClick={onHome} />
+      <div className={`home-sidebar ${open ? "open" : ""}`}>
+        <FeedmeBrand locale={user.locale} onClick={onHome} />
         <div className="sidebar-bottom">
           <LanguageControl
             locale={user.locale}
@@ -2239,13 +2382,40 @@ function HomeSidebar({
               onOpenLanguage();
             }}
           />
+          <button
+            className="home-help-legal"
+            onClick={() => {
+              close();
+              setHelpLegalOpen(true);
+            }}
+          >
+            <CircleHelp size={18} />
+            {t("Help & legal")}
+          </button>
           <SidebarAccount
             displayName={user.display_name}
+            settingsLabel={t("Settings")}
+            onSettings={() => {
+              close();
+              onPrivacyData();
+            }}
             signOutLabel={t("Sign out")}
             onSignOut={onSignOut}
           />
         </div>
-      </aside>
+      </div>
+      {helpLegalOpen && (
+        <ModalBackdrop onClose={() => setHelpLegalOpen(false)}>
+          <HelpLegalPanel
+            locale={user.locale}
+            onClose={() => setHelpLegalOpen(false)}
+            onNavigate={(path) => {
+              setHelpLegalOpen(false);
+              onNavigateLegal(path);
+            }}
+          />
+        </ModalBackdrop>
+      )}
     </>
   );
 }
@@ -2263,6 +2433,8 @@ function Home({
   onLocale,
   onSignOut,
   onHome,
+  onPrivacyData,
+  onNavigateLegal,
 }: {
   user: User;
   error: string;
@@ -2276,17 +2448,21 @@ function Home({
   onLocale: (locale: User["locale"]) => void;
   onSignOut: () => void;
   onHome: () => void;
+  onPrivacyData: () => void;
+  onNavigateLegal: (path: string) => void;
 }) {
   const t = (text: string) => translate(user.locale, text);
   return (
-    <main className="home-shell">
+    <div className="home-shell">
       <HomeSidebar
         user={user}
         onHome={onHome}
         onOpenLanguage={onOpenLanguage}
         onSignOut={onSignOut}
+        onPrivacyData={onPrivacyData}
+        onNavigateLegal={onNavigateLegal}
       />
-      <section className="empty-home">
+      <div className="empty-home">
         <p className="eyebrow">{t("YOUR FAMILY SPACE")}</p>
         <h1>
           {t("Everything starts when")}
@@ -2302,7 +2478,7 @@ function Home({
           <Plus size={18} />
           {t("Create child")}
         </button>
-      </section>
+      </div>
       {createChildOpen && (
         <CreateChildModal
           error={error}
@@ -2318,7 +2494,7 @@ function Home({
           onSelect={onLocale}
         />
       )}
-    </main>
+    </div>
   );
 }
 
@@ -2339,6 +2515,8 @@ function ChildrenHome({
   onLocale,
   onSignOut,
   onHome,
+  onPrivacyData,
+  onNavigateLegal,
 }: {
   user: User;
   children: Child[];
@@ -2356,18 +2534,22 @@ function ChildrenHome({
   onLocale: (locale: User["locale"]) => void;
   onSignOut: () => void;
   onHome: () => void;
+  onPrivacyData: () => void;
+  onNavigateLegal: (path: string) => void;
 }) {
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   const t = (text: string) => translate(user.locale, text);
   return (
-    <main className="home-shell">
+    <div className="home-shell">
       <HomeSidebar
         user={user}
         onHome={onHome}
         onOpenLanguage={onOpenLanguage}
         onSignOut={onSignOut}
+        onPrivacyData={onPrivacyData}
+        onNavigateLegal={onNavigateLegal}
       />
-      <section className="children-home">
+      <div className="children-home">
         <div className="children-home-heading">
           <div>
             <p className="eyebrow">{t("YOUR FAMILY SPACE")}</p>
@@ -2417,6 +2599,7 @@ function ChildrenHome({
                 <div className="child-actions">
                   <button
                     className="more child-more"
+                    aria-label={`${t("Actions for")} ${item.name}`}
                     title={`${t("Actions for")} ${item.name}`}
                     onClick={() =>
                       setActionsFor(actionsFor === item.id ? null : item.id)
@@ -2450,7 +2633,7 @@ function ChildrenHome({
             </article>
           ))}
         </div>
-      </section>
+      </div>
       {createChildOpen && (
         <CreateChildModal
           error={error}
@@ -2466,7 +2649,7 @@ function ChildrenHome({
           onSelect={onLocale}
         />
       )}
-    </main>
+    </div>
   );
 }
 
@@ -2535,8 +2718,8 @@ function ManageModal({
   );
   return (
     <ModalBackdrop onClose={onClose}>
-      <section className="log-modal manager">
-        <button className="close" onClick={onClose}>
+      <section className="log-modal manager" role="dialog" aria-modal="true" aria-label={t("Manage care") }>
+        <button className="close" aria-label={t("Close")} onClick={onClose}>
           <X size={20} />
         </button>
         {panel === "activity" && (

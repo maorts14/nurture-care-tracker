@@ -31,7 +31,12 @@ In VS Code, run **Tasks: Run Task → App: start development**. For breakpoints,
 - Per-activity dashboards with record counts, median/average intervals, anomaly warnings, and numeric custom-field averages
 - CSV export of historical logs and pending future reminders, plus a printable report that can be saved as PDF
 - Per-user English/Hebrew direction setting and a basic installable PWA configuration
+- A signed-in Privacy & data area with a self-service JSON export of the user profile, memberships, and content they created. Account deletion and encrypted-backup erasure remain explicit pre-launch work; the app does not claim those controls are complete.
 - Automatic SQL migration runner when the API container starts
+
+## Public site and trust pages
+
+The local app also includes a public landing page and reachable trust pages at `/`, `/about`, `/privacy`, `/cookies`, `/terms`, `/security`, `/accessibility`, and `/contact`. They are intentionally labelled as prepared pre-launch drafts until their final legal review, support contact, effective dates, deletion workflow, and backup-encryption implementation are complete. Signed-in users can reach the public pages through **Help & legal**, and their data export through **Privacy & data**.
 
 ## Local configuration and Google sign-in
 

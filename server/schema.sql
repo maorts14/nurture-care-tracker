@@ -72,7 +72,7 @@ CREATE TABLE care_gap (
   starts_at TIMESTAMPTZ NOT NULL,
   ends_at TIMESTAMPTZ NOT NULL CHECK (ends_at > starts_at),
   reason TEXT,
-  created_by UUID NOT NULL REFERENCES app_user(id),
+  created_by UUID REFERENCES app_user(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -84,7 +84,7 @@ CREATE TABLE activity_log (
   event_timezone TEXT NOT NULL,
   field_values JSONB NOT NULL DEFAULT '{}',
   note TEXT,
-  created_by UUID NOT NULL REFERENCES app_user(id),
+  created_by UUID REFERENCES app_user(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX activity_log_timeline_idx ON activity_log (child_id, event_time DESC);
