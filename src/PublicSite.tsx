@@ -297,12 +297,13 @@ function LegalPage({ page, locale }: Pick<PublicSiteProps, "page" | "locale">) {
 
 function AccessibilityPage({ locale }: { locale: PublicLocale }) {
   const content = (locale === "he" ? hebrewPageByPath : pageByPath).accessibility;
+  const he = locale === "he";
   const principles = locale === "he"
     ? [
         ["ניגודיות צבעים קריאה", "חיזקנו את הניגודיות בין טקסט, לחצנים, סמלי פעולה ומצבי מיקוד, כדי לשפר את הקריאות."],
         ["טקסט קריא", "הגדלנו טקסט תפעולי קטן וחיזקנו צבעי טקסט משניים, כדי שהמידע היומיומי יהיה נוח יותר לקריאה."],
         ["תמיכה בעברית ובאנגלית", "הממשק מתאים את השפה ואת הכיוון שלו לבחירת המשתמש, כולל תצוגה מימין לשמאל בעברית."],
-        ["מקלדת ומצב מיקוד", "אפשר להגיע לפעולות באמצעות המקלדת, לראות סימון מיקוד ברור ולדלג ישירות לתוכן הראשי."],
+        ["מקלדת ומצב מיקוד", "אפשר להגיע לפעולות באמצעות המקלדת ולראות סימון מיקוד ברור."],
         ["חלונות קופצים", "חלונות קופצים שומרים את המיקוד בתוכם, נסגרים ב־Esc ומחזירים את המיקוד לפעולה שפתחה אותם."],
         ["טפסים ומשוב", "שדות הטופס מקבלים תוויות ברורות, השלמה אוטומטית היכן שמתאים, ושגיאות מוצגות גם כהודעה לקוראי מסך."],
         ["מבנה ומשמעות", "אנו משתמשים בכותרות, אזורי תוכן ראשיים וכפתורים אמיתיים כדי שטכנולוגיה מסייעת תוכל להבין את הממשק."],
@@ -324,6 +325,20 @@ function AccessibilityPage({ locale }: { locale: PublicLocale }) {
     <section className="legal-hero"><h1>{content.title}</h1><p>{content.intro}</p></section>
     <div className="accessibility-content">
       <ol>{principles.map(([heading, body]) => <li key={heading}><h2>{heading}</h2><p>{body}</p></li>)}</ol>
+      <section className="accessibility-statement" aria-labelledby="accessibility-statement-heading">
+        <p className="eyebrow">{he ? "הצהרת נגישות" : "ACCESSIBILITY STATEMENT"}</p>
+        <h2 id="accessibility-statement-heading">{he ? "המחויבות שלנו" : "Our commitment"}</h2>
+        <p>{he ? "Feedme פועלת כדי לאפשר שימוש ברור ונוח בשירות לכל אדם. אנו שואפים לעמוד בהנחיות WCAG 2.2 ברמה AA, ככל שהן חלות על השירות. זו אינה הצהרת הסמכה." : "Feedme works to make the service clear and usable for everyone. We aim to meet WCAG 2.2 AA where it applies to the service. This is not a certification statement."}</p>
+        <dl>
+          <div><dt>{he ? "עדכון אחרון" : "Last updated"}</dt><dd>{he ? "19 בספטמבר 2026" : "19 September 2026"}</dd></div>
+          <div><dt>{he ? "אחראי נגישות" : "Accessibility contact"}</dt><dd>{he ? "צוות התמיכה של Feedme" : "Feedme support team"}</dd></div>
+        </dl>
+        <h2>{he ? "דיווח על חסם נגישות" : "Report an accessibility barrier"}</h2>
+        <p>{he ? "אם נתקלתם בקושי בשימוש בשירות או זקוקים לחלופה נגישה, אפשר לפנות אלינו באימייל או ב־WhatsApp. כדאי לציין את העמוד או הפעולה, הדפדפן וטכנולוגיית העזר שבה השתמשתם." : "If you encounter a barrier or need an accessible alternative, contact us by email or WhatsApp. Please include the page or action, browser, and assistive technology you used."}</p>
+        <p className="accessibility-contact-links"><a href="mailto:maorts14@gmail.com">maorts14@gmail.com</a><span aria-hidden="true"> · </span><a href={`https://wa.me/972503329996?text=${encodeURIComponent(he ? "היי, אני רוצה לדווח על חסם נגישות ב-Feedme" : "Hi, I want to report an accessibility barrier in Feedme")}`} target="_blank" rel="noreferrer">WhatsApp</a></p>
+        <h2>{he ? "הליך טיפול ומגבלות ידועות" : "Response process and known limitations"}</h2>
+        <p>{he ? "נבדוק כל פנייה ונשיב דרך ערוץ הפנייה. בדיקות ידניות של קוראי מסך, דפדפנים ותרחישים שונים נמשכות; אם משהו אינו נגיש לכם, ננסה לספק דרך חלופית ולהשתמש בדיווח כדי לשפר את השירות." : "We review each report and reply through the contact channel. Manual testing across screen readers, browsers, and scenarios is ongoing; if something is inaccessible to you, we will try to provide an alternative and use the report to improve the service."}</p>
+      </section>
     </div>
   </>;
 }

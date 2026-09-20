@@ -219,6 +219,14 @@ body {
 .accessibility-content li { padding-inline-start: 8px; }
 .accessibility-content h2 { margin: 0 0 9px; font-size: 25px; letter-spacing: -1px; }
 .accessibility-content p { margin: 0; color: #302c28; font-size: clamp(18px, 2vw, 22px); line-height: 1.65; }
+.accessibility-statement { margin-top: 58px; padding-top: 42px; border-top: 1px solid #e2dbd1; }
+.accessibility-statement > h2:not(:first-of-type) { margin-top: 32px; }
+.accessibility-statement dl { display: grid; gap: 10px; margin: 24px 0 0; }
+.accessibility-statement dl > div { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 16px; }
+.accessibility-statement dt { color: #413d39; font-weight: 800; }
+.accessibility-statement dd { margin: 0; color: #302c28; }
+.accessibility-contact-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px !important; }
+.accessibility-contact-links a { color: var(--color-primary-hover); font-weight: 800; }
 .contact-content { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 920px; margin: 0 auto; padding: clamp(48px, 7vw, 90px) 24px clamp(76px, 11vw, 140px); }
 .contact-action { display: flex; align-items: center; gap: 15px; min-height: 104px; padding: 20px; color: #28231f; text-decoration: none; }
 .contact-action + .contact-action { border-inline-start: 1px solid #e2dbd1; }
@@ -236,6 +244,11 @@ body {
 .help-legal-links button { gap: 12px; }
 .help-legal-links button svg:first-child { color: var(--color-accent); }
 .help-legal-links button svg:last-child { margin-inline-start: auto; color: #413d39; }
+@media (min-width: 761px) and (max-width: 1100px) {
+  .marketing-hero { grid-template-columns: 1fr; gap: 48px; }
+  .marketing-hero-copy { max-width: 680px; }
+  .marketing-product-carousel { width: min(100%, 720px); justify-self: center; }
+}
 @media (max-width: 760px) {
   .marketing-header { min-height: 66px; padding: 0 18px; }
   .marketing-header .brand { font-size: 18px; }

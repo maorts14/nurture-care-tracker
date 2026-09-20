@@ -28,7 +28,7 @@ Files: `index.html`, `src/App.tsx`, `src/PublicSite.tsx`, `src/components/Langua
 - The public site and signed-in application use standard main-content and complementary sidebar landmark regions where their page structure calls for them.
 - Public legal pages provide an in-page table of contents; public navigation and footer links expose the key public routes.
 - The public accessibility page was changed from clickable cards to a numbered list. It covers contrast, readable text, English/Hebrew RTL support, keyboard and focus, dialogs, forms/errors, semantic structure, button sizing, and reduced motion.
-- Incomplete ARIA tab patterns were removed. Carousel dots are a labelled group of buttons; timeline filters are a labelled group whose buttons expose state with `aria-pressed`.
+- Incomplete ARIA tab patterns were removed. Carousel dots are a labelled group of buttons; timeline filters are a native radio group because exactly one filter is selected at a time.
 
 Files: `src/App.tsx`, `src/PublicSite.tsx`, `src/AccountDataPage.tsx`, `src/styles.css`.
 
@@ -58,7 +58,7 @@ Files: `src/components/ModalBackdrop.tsx`, `src/components/CreateChildModal.tsx`
 - Sign-in, account-export, and account-deletion errors use `role="alert"`.
 - The Insights activity selector is a fieldset with an `Activity` legend.
 - Icon-only controls receive names where visible text is absent, including child actions, event and reminder actions, mobile navigation, close controls, settings/export, and navigation scrims.
-- Timeline filter selection uses `aria-pressed`.
+- Timeline filter selection uses native radio inputs with visible labels.
 
 Files: `src/App.tsx`, `src/AccountDataPage.tsx`, `src/AnalyticsView.tsx`, `src/components/CreateChildModal.tsx`, `src/i18n.ts`.
 
@@ -110,6 +110,7 @@ Files: `src/styles.css`, `src/App.tsx`, `src/PublicSite.tsx`.
 
 - Public-site account, navigation, footer, links, carousel, contact controls, and legal pages received contrast, hover, focus, target-size, semantics, keyboard, and RTL review.
 - The public accessibility text was simplified to describe implemented behaviour rather than clickable promotional content. Redundant “familiar controls” copy was removed.
+- The public accessibility page includes a formal statement with the WCAG 2.2 AA target, last-updated date, Feedme support-team responsibility, email and WhatsApp barrier-reporting routes, an alternative-access commitment, and transparent note that manual assistive-technology testing is ongoing.
 - `docs/accessibility-contrast-report.md` records the colour audit.
 - This document records both implemented changes and open work so a future reusable skill does not mistake source edits for completed validation.
 
@@ -137,7 +138,7 @@ These items are deliberately **not** complete:
 1. Test every signed-in role and route with keyboard only, including create/edit/delete, invitations, reminders, mobile navigation, and nested dialogs.
 2. Test NVDA with Chrome or Firefox and VoiceOver with Safari in both English and Hebrew. Hebrew also requires a Hebrew-capable voice installed in Windows and NVDA automatic language switching enabled; page metadata cannot install or select that voice.
 3. Test every public and signed-in route at 200% and 400% zoom, 320 CSS-pixel width, and browser text-size overrides.
-4. The public accessibility page is not yet a complete formal statement. Before launch it needs a direct accessible contact route, responsible role/person, publication/update date, known limitations or exemptions, and a barrier-response process. It must remain accurate and must not claim certification without the required validation.
+4. Keep the public accessibility statement current: update its date, responsible contact, known limitations, and barrier-response wording whenever those facts change. It must not claim certification without the required validation.
 5. Icon-ink contrast is guaranteed for valid custom activity colours. Any future use of those colours for text, borders, charts, or other UI must be measured independently.
 6. Repeat manual checks against the deployed production build, not only local development.
 
