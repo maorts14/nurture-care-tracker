@@ -1,6 +1,6 @@
 # Feedme color-contrast report
 
-Date: 2026-09-18  
+Date: 2026-09-18
 Scope: accessibility checklist item 7 — color contrast and non-color visual cues.
 
 ## Standard used

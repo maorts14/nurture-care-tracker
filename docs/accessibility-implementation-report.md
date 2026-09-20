@@ -1,6 +1,6 @@
 # Feedme accessibility implementation record
 
-Date: 2026-09-18  
+Date: 2026-09-18
 Status: complete record of the current working tree
 
 ## Scope and evidence level
