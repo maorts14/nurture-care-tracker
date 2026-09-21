@@ -1,0 +1,13 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: feedme_test
+      POSTGRES_USER: feedme_test
+      POSTGRES_PASSWORD: feedme_test_only
+    ports: ["5433:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U feedme_test -d feedme_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20

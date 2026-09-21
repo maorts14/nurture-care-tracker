@@ -3,9 +3,11 @@ import { io } from "socket.io-client";
 import { AnalyticsView } from "./AnalyticsView";
 import { AccountDataPage } from "./AccountDataPage";
 import { CaregiversPage } from "./CaregiversPage";
+import { CarePausesPage, type CarePause } from "./CarePausesPage";
 import { NotesPage } from "./NotesPage";
 import { CommentsPage } from "./CommentsPage";
 import { CreateChildModal } from "./components/CreateChildModal";
+import { InteractiveRow } from "./components/InteractiveRow";
 import { LanguageControl } from "./components/LanguageControl";
 import { LanguagePicker } from "./components/LanguagePicker";
 import { ModalBackdrop } from "./components/ModalBackdrop";
@@ -94,7 +96,7 @@ type ActivityAnalytics = {
   average: ActivityMetrics;
   calendar_day: ActivityMetrics;
   last_24_hours: ActivityMetrics;
-  history: Array<ActivityMetrics & { date: string }>;
+  history: Array<ActivityMetrics & { date: string; excluded_from_average: boolean }>;
 };
 type ActivityMetrics = {
   count: number;
@@ -107,7 +109,7 @@ type Dashboard = {
   timeline: Event[];
   activities: Activity[];
   reminders: Reminder[];
-  gaps: { starts_at: string; ends_at: string }[];
+  gaps: CarePause[];
   analytics: ActivityAnalytics[];
   insight_activity_ids: string[] | null;
   first_record_date: string | null;
@@ -153,7 +155,6 @@ type Panel =
   | "activity"
   | "field"
   | "reminder"
-  | "gap"
   | "notes"
   | "invite"
   | "children"
@@ -310,6 +311,7 @@ export default function App() {
   const t = (text: string) => translate(locale, text);
   const insightsOpen = /^\/children\/[^/]+\/insights$/.test(routePath);
   const caregiversOpen = /^\/children\/[^/]+\/caregivers$/.test(routePath);
+  const carePausesOpen = /^\/children\/[^/]+\/care-pauses$/.test(routePath);
   const owner = dash?.role === "owner";
   const canManage = owner || dash?.role === "care_manager";
   const write = dash?.role !== "viewer";
@@ -463,7 +465,7 @@ export default function App() {
   }, []);
   useEffect(() => {
     if (!user) return;
-    const match = routePath.match(/^\/children\/([^/]+)(?:\/(?:insights|caregivers))?$/);
+    const match = routePath.match(/^\/children\/([^/]+)(?:\/(?:insights|caregivers|care-pauses))?$/);
     if (match) {
       const routeChild = children.find((item) => item.id === match[1]);
       if (routeChild) setChild(routeChild);
@@ -517,12 +519,15 @@ export default function App() {
     const timelineMatch = routePath.match(/^\/children\/[^/]+$/);
     const insightsMatch = routePath.match(/^\/children\/[^/]+\/insights$/);
     const caregiversMatch = routePath.match(/^\/children\/[^/]+\/caregivers$/);
+    const carePausesMatch = routePath.match(/^\/children\/[^/]+\/care-pauses$/);
     if (timelineMatch && child)
       document.title = locale === "he" ? `ציר הזמן של ${child.name}` : `${child.name}’s timeline`;
     else if (insightsMatch && child)
       document.title = locale === "he" ? `דפוסי הטיפול של ${child.name}` : `${child.name}’s care patterns`;
     else if (caregiversMatch)
       document.title = locale === "he" ? "מטפלים" : "Caregivers";
+    else if (carePausesMatch)
+      document.title = locale === "he" ? "הפסקות טיפול" : "Care pauses";
     else document.title = titles[routePath] ?? "Feedme";
   }, [routePath, locale, child?.id, child?.name]);
   const clearInvite = () => {
@@ -879,19 +884,25 @@ export default function App() {
     setSelectedReminder((current) => (current?.id === item.id ? null : current));
     await loadDash(child.id);
   }
-  async function gap(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function saveCarePause(
+    pause: CarePause | null,
+    draft: { startsAt: string; endsAt: string; reason: string; includeInAverages: boolean },
+  ) {
     if (!child) return;
-    const form = new FormData(event.currentTarget);
-    await api(`/api/children/${child.id}/gaps`, {
-      method: "POST",
-      body: JSON.stringify({
-        startsAt: new Date(String(form.get("start"))).toISOString(),
-        endsAt: new Date(String(form.get("end"))).toISOString(),
-        reason: form.get("reason"),
-      }),
-    });
-    setPanel(null);
+    await api(
+      pause
+        ? `/api/children/${child.id}/gaps/${pause.id}`
+        : `/api/children/${child.id}/gaps`,
+      {
+        method: pause ? "PUT" : "POST",
+        body: JSON.stringify(draft),
+      },
+    );
+    await loadDash(child.id);
+  }
+  async function deleteCarePause(pause: CarePause) {
+    if (!child) return;
+    await api(`/api/children/${child.id}/gaps/${pause.id}`, { method: "DELETE" });
     await loadDash(child.id);
   }
   async function invite(event: FormEvent<HTMLFormElement>) {
@@ -913,7 +924,8 @@ export default function App() {
   async function addNote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!child) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     await api(`/api/children/${child.id}/notes`, {
       method: "POST",
       body: JSON.stringify({
@@ -921,7 +933,7 @@ export default function App() {
         visibility: form.get("visibility"),
       }),
     });
-    event.currentTarget.reset();
+    formElement.reset();
     await loadNotes();
   }
   async function editNote(item: Note) {
@@ -1262,7 +1274,7 @@ export default function App() {
         aria-label={t("Close navigation")}
         onClick={() => setMobileSidebarOpen(false)}
       />
-      <section className={`workspace ${insightsOpen || caregiversOpen ? "insights-workspace" : ""}`}>
+      <section className={`workspace ${insightsOpen || caregiversOpen || carePausesOpen ? "insights-workspace" : ""}`}>
         {insightsOpen ? (
           <AnalyticsView
             child={child}
@@ -1282,6 +1294,17 @@ export default function App() {
             onOpenNavigation={() => setMobileSidebarOpen(true)}
             onChangeRole={changeMemberRole}
             onRemove={removeMember}
+          />
+        ) : carePausesOpen ? (
+          <CarePausesPage
+            locale={user.locale}
+            timezone={child.timezone}
+            pauses={dash.gaps}
+            write={write}
+            onBack={() => navigate(`/children/${child.id}`)}
+            onOpenNavigation={() => setMobileSidebarOpen(true)}
+            onSave={saveCarePause}
+            onDelete={deleteCarePause}
           />
         ) : (
           <>
@@ -1499,7 +1522,8 @@ export default function App() {
                       <span>{timelineDayFormatter.format(new Date(event.event_time))}</span>
                     </div>
                   )}
-                  <article
+                  <InteractiveRow
+                    layout="custom"
                     className="event"
                     onClick={(clickEvent) => {
                       if (
@@ -1591,7 +1615,7 @@ export default function App() {
                         </button>
                       )}
                     </div>
-                  </article>
+                  </InteractiveRow>
                 </Fragment>
                 );
               })}
@@ -1646,9 +1670,12 @@ export default function App() {
               {t("Manage care")}
             </button>
           )}
-          <button onClick={() => setPanel("gap")}>
+          <button
+            className={carePausesOpen ? "nav-active" : ""}
+            onClick={() => navigate(`/children/${child.id}/care-pauses`)}
+          >
             <HeartPulse size={18} />
-            {t("Declare care gap")}
+            {t("Care pauses")}
           </button>
           {canManage && (
             <button onClick={() => setPanel("invite")}>
@@ -1758,7 +1785,6 @@ export default function App() {
           onArchive={archiveActivity}
           onField={addField}
           onReminder={remind}
-          onGap={gap}
           onInvite={invite}
           onNote={addNote}
           onChild={createChild}
@@ -2683,7 +2709,6 @@ function ManageModal({
   onArchive,
   onField,
   onReminder,
-  onGap,
   onInvite,
   onNote,
   onChild,
@@ -2702,7 +2727,6 @@ function ManageModal({
   onArchive: (id: string) => void;
   onField: (event: FormEvent<HTMLFormElement>) => void;
   onReminder: (event: FormEvent<HTMLFormElement>) => void;
-  onGap: (event: FormEvent<HTMLFormElement>) => void;
   onInvite: (event: FormEvent<HTMLFormElement>) => void;
   onNote: (event: FormEvent<HTMLFormElement>) => void;
   onChild: (event: FormEvent<HTMLFormElement>) => void;
@@ -2823,29 +2847,6 @@ function ManageModal({
             </label>
             <ReminderScheduleFields locale={locale} />
             <button className="primary submit">{t("Save reminder")}</button>
-          </form>
-        )}
-        {panel === "gap" && (
-          <form onSubmit={onGap}>
-            <h2>{t("Declare care gap")}</h2>
-            <p className="time-hint">
-              {t(
-                "Logs in or across this range do not affect interval analytics.",
-              )}
-            </p>
-            <label>
-              {t("Start")}
-              <input name="start" type="datetime-local" required />
-            </label>
-            <label>
-              {t("End")}
-              <input name="end" type="datetime-local" required />
-            </label>
-            <label>
-              {t("Reason")}
-              <input name="reason" placeholder={t("Shabbat")} />
-            </label>
-            <button className="primary submit">{t("Declare gap")}</button>
           </form>
         )}
         {panel === "invite" && (

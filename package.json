@@ -8,7 +8,11 @@
     "build": "tsc -b && vite build",
     "server": "node --watch --env-file=.env --import tsx server/index.ts",
     "migrate": "node --env-file=.env --import tsx server/migrate.ts",
-    "check": "tsc -b --pretty false"
+    "check": "tsc -b --pretty false",
+    "test:db:reset": "tsx tests/support/resetTestDatabase.ts --seed",
+    "test:api": "npm run test:db:reset && node --test --import tsx --test-concurrency=1 tests/api/*.test.ts",
+    "test:e2e": "playwright test",
+    "test": "npm run test:api && npm run test:e2e"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
@@ -26,6 +30,7 @@
     "vite": "latest"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/cookie-parser": "latest",
     "@types/cors": "latest",
     "@types/express": "latest",

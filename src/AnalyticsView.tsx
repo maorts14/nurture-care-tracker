@@ -15,7 +15,7 @@ type ActivityStat = {
   average: Metrics;
   calendar_day: Metrics;
   last_24_hours: Metrics;
-  history: Array<Metrics & { date: string }>;
+  history: Array<Metrics & { date: string; excluded_from_average: boolean }>;
 };
 type Activity = {
   id: string;
@@ -285,7 +285,7 @@ export function AnalyticsView({
                   {stat.history.length ? (
                     stat.history.map((day) => (
                       <section className="analytics-history-day" key={day.date}>
-                        <time dateTime={day.date}>
+                          <time dateTime={day.date}>
                           <span>
                             {weekdayFormatter.format(
                               new Date(`${day.date}T12:00:00`),
@@ -296,7 +296,12 @@ export function AnalyticsView({
                               new Date(`${day.date}T12:00:00`),
                             )}
                           </span>
-                        </time>
+                          </time>
+                          {day.excluded_from_average && (
+                            <small className="analytics-excluded-day">
+                              {t("Excluded from average")}
+                            </small>
+                          )}
                         <MetricsGrid
                           metrics={day}
                           feeding={feeding}

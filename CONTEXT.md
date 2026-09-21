@@ -8,6 +8,10 @@ A child profile shared by its members.
 
 One occurrence of care recorded at a specific time. A feeding is a care session, regardless of how many milk portions it contains.
 
+## Care pause
+
+A declared interval when the family is not tracking care. It always excludes affected event-to-event timing intervals. By default, every local calendar day touched by a care pause is excluded from Insights averages; a caregiver may explicitly include those affected days when creating or editing the pause.
+
 ## Feeding portion
 
 A measured component of one feeding session. A portion has a milk type, delivery method, and amount. Several portions may belong to the same feeding session.

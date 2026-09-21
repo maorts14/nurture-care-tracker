@@ -677,7 +677,12 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
       [childId],
     ),
     pool.query(
-      "SELECT starts_at, ends_at, reason FROM care_gap WHERE child_id = $1 ORDER BY starts_at DESC",
+      `SELECT gap.id, gap.starts_at, gap.ends_at, gap.reason, gap.include_in_averages,
+         gap.created_at, COALESCE(author.display_name, 'Deleted caregiver') AS created_by
+       FROM care_gap AS gap
+       LEFT JOIN app_user AS author ON author.id = gap.created_by
+       WHERE gap.child_id = $1
+       ORDER BY gap.starts_at DESC`,
       [childId],
     ),
     pool.query(
@@ -710,6 +715,17 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
          FROM log_metrics
          GROUP BY activity_id, local_date
        ),
+       excluded_average_days AS (
+         SELECT DISTINCT series.local_date::date AS local_date
+         FROM care_gap
+         CROSS JOIN child_timezone
+         CROSS JOIN LATERAL generate_series(
+           (care_gap.starts_at AT TIME ZONE child_timezone.timezone)::date,
+           ((care_gap.ends_at AT TIME ZONE child_timezone.timezone) - INTERVAL '1 microsecond')::date,
+           INTERVAL '1 day'
+         ) AS series(local_date)
+         WHERE care_gap.child_id = $1 AND NOT care_gap.include_in_averages
+       ),
        first_record AS (
          SELECT MIN(local_date) AS first_record_date
          FROM log_metrics
@@ -721,6 +737,8 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
            AVG(total_amount_ml)::float8 AS total_amount_ml,
            SUM(total_amount_ml) / NULLIF(SUM(measured_feed_count), 0)::float8 AS average_amount_ml
          FROM daily
+         LEFT JOIN excluded_average_days ON excluded_average_days.local_date = daily.local_date
+         WHERE excluded_average_days.local_date IS NULL
          GROUP BY activity_id
        ),
        calendar_day_metrics AS (
@@ -740,8 +758,10 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
          GROUP BY activity_id
        ),
        ranked_history AS (
-         SELECT daily.*, ROW_NUMBER() OVER (PARTITION BY activity_id ORDER BY local_date DESC) AS position
+         SELECT daily.*, excluded_average_days.local_date IS NOT NULL AS excluded_from_average,
+           ROW_NUMBER() OVER (PARTITION BY activity_id ORDER BY daily.local_date DESC) AS position
          FROM daily
+         LEFT JOIN excluded_average_days ON excluded_average_days.local_date = daily.local_date
          CROSS JOIN child_timezone
          WHERE daily.local_date < (now() AT TIME ZONE child_timezone.timezone)::date
        ),
@@ -753,7 +773,8 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
                'count', count,
                'portion_count', portion_count,
                'total_amount_ml', total_amount_ml,
-               'average_amount_ml', total_amount_ml / NULLIF(measured_feed_count, 0)::float8
+               'average_amount_ml', total_amount_ml / NULLIF(measured_feed_count, 0)::float8,
+               'excluded_from_average', excluded_from_average
              )
              ORDER BY local_date DESC
            ) AS days
@@ -830,9 +851,11 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
         portion_count: number;
         total_amount_ml: number;
         average_amount_ml: number | null;
+        excluded_from_average: boolean;
       }) => ({
         date: String(day.date).slice(0, 10),
         ...metrics(day),
+        excluded_from_average: day.excluded_from_average,
       }),
     ),
   }));
@@ -1087,10 +1110,11 @@ app.post("/api/children/:childId/gaps", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
   const { childId } = request.params;
-  const { startsAt, endsAt, reason } = request.body as {
+  const { startsAt, endsAt, reason, includeInAverages } = request.body as {
     startsAt: string;
     endsAt: string;
     reason?: string;
+    includeInAverages?: boolean;
   };
   const access = await membership(childId, session.userId);
   if (access.rows[0]?.role === "viewer") {
@@ -1098,11 +1122,58 @@ app.post("/api/children/:childId/gaps", async (request, response) => {
     return;
   }
   const inserted = await pool.query(
-    "INSERT INTO care_gap (child_id, starts_at, ends_at, reason, created_by) VALUES ($1, $2, $3, $4, $5) RETURNING *",
-    [childId, startsAt, endsAt, reason ?? null, session.userId],
+    "INSERT INTO care_gap (child_id, starts_at, ends_at, reason, include_in_averages, created_by) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
+    [childId, startsAt, endsAt, reason ?? null, includeInAverages === true, session.userId],
   );
   io.to(childRoom(childId)).emit("timeline:changed");
   response.status(201).json(inserted.rows[0]);
+});
+app.put("/api/children/:childId/gaps/:gapId", async (request, response) => {
+  const session = requireSession(request, response);
+  if (!session) return;
+  const { startsAt, endsAt, reason, includeInAverages } = request.body as {
+    startsAt: string;
+    endsAt: string;
+    reason?: string;
+    includeInAverages?: boolean;
+  };
+  const access = await membership(request.params.childId, session.userId);
+  if (access.rows[0]?.role === "viewer") {
+    response.status(403).json({ error: "Caregiver access is required" });
+    return;
+  }
+  const updated = await pool.query(
+    `UPDATE care_gap
+     SET starts_at = $1, ends_at = $2, reason = $3, include_in_averages = $4
+     WHERE id = $5 AND child_id = $6
+     RETURNING *`,
+    [startsAt, endsAt, reason ?? null, includeInAverages === true, request.params.gapId, request.params.childId],
+  );
+  if (updated.rowCount !== 1) {
+    response.status(404).json({ error: "Care pause not found" });
+    return;
+  }
+  io.to(childRoom(request.params.childId)).emit("timeline:changed");
+  response.status(204).end();
+});
+app.delete("/api/children/:childId/gaps/:gapId", async (request, response) => {
+  const session = requireSession(request, response);
+  if (!session) return;
+  const access = await membership(request.params.childId, session.userId);
+  if (access.rows[0]?.role === "viewer") {
+    response.status(403).json({ error: "Caregiver access is required" });
+    return;
+  }
+  const deleted = await pool.query(
+    "DELETE FROM care_gap WHERE id = $1 AND child_id = $2 RETURNING id",
+    [request.params.gapId, request.params.childId],
+  );
+  if (deleted.rowCount !== 1) {
+    response.status(404).json({ error: "Care pause not found" });
+    return;
+  }
+  io.to(childRoom(request.params.childId)).emit("timeline:changed");
+  response.status(204).end();
 });
 app.post("/api/children/:childId/invitations", async (request, response) => {
   const session = requireSession(request, response);
@@ -1679,6 +1750,17 @@ app.get("/api/children/:childId/export.report", async (request, response) => {
        FROM log_metrics
        GROUP BY activity_id, local_date
      ),
+     excluded_average_days AS (
+       SELECT DISTINCT series.local_date::date AS local_date
+       FROM care_gap
+       CROSS JOIN child_context
+       CROSS JOIN LATERAL generate_series(
+         (care_gap.starts_at AT TIME ZONE child_context.timezone)::date,
+         ((care_gap.ends_at AT TIME ZONE child_context.timezone) - INTERVAL '1 microsecond')::date,
+         INTERVAL '1 day'
+       ) AS series(local_date)
+       WHERE care_gap.child_id = $1 AND NOT care_gap.include_in_averages
+     ),
      average_metrics AS (
        SELECT activity_id,
          AVG(count)::float8 AS count,
@@ -1686,6 +1768,8 @@ app.get("/api/children/:childId/export.report", async (request, response) => {
          AVG(total_amount_ml)::float8 AS total_amount_ml,
          SUM(total_amount_ml) / NULLIF(SUM(measured_feed_count), 0)::float8 AS average_amount_ml
        FROM daily
+       LEFT JOIN excluded_average_days ON excluded_average_days.local_date = daily.local_date
+       WHERE excluded_average_days.local_date IS NULL
        GROUP BY activity_id
      ),
      calendar_day_metrics AS (
@@ -1703,19 +1787,21 @@ app.get("/api/children/:childId/export.report", async (request, response) => {
        GROUP BY activity_id
      ),
      history_metrics AS (
-       SELECT activity_id,
+       SELECT daily.activity_id,
          jsonb_agg(
            jsonb_build_object(
-             'date', local_date,
-             'count', count,
-             'portion_count', portion_count,
-             'total_amount_ml', total_amount_ml,
-             'average_amount_ml', total_amount_ml / NULLIF(measured_feed_count, 0)::float8
-           ) ORDER BY local_date DESC
+             'date', daily.local_date,
+             'count', daily.count,
+             'portion_count', daily.portion_count,
+             'total_amount_ml', daily.total_amount_ml,
+             'average_amount_ml', daily.total_amount_ml / NULLIF(daily.measured_feed_count, 0)::float8,
+             'excluded_from_average', excluded_average_days.local_date IS NOT NULL
+           ) ORDER BY daily.local_date DESC
          ) AS days
        FROM daily
-       WHERE local_date BETWEEN $3::date AND $4::date
-       GROUP BY activity_id
+       LEFT JOIN excluded_average_days ON excluded_average_days.local_date = daily.local_date
+       WHERE daily.local_date BETWEEN $3::date AND $4::date
+       GROUP BY daily.activity_id
      )
      SELECT child_context.name AS child_name, activity.id, activity.name, activity.kind,
        COALESCE(average_metrics.count, 0)::float8 AS average_count,
