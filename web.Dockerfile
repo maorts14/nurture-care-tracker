@@ -2,7 +2,7 @@ FROM node:24-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
-COPY index.html vite.config.ts tsconfig.json tsconfig.app.json tsconfig.server.json ./
+COPY index.html vite.config.ts tsconfig.json tsconfig.app.json tsconfig.server.json tsconfig.tests.json ./
 COPY src ./src
 COPY public ./public
 RUN npx tsc -p tsconfig.app.json && npx vite build
