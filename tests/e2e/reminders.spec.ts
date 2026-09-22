@@ -11,22 +11,45 @@ async function signInAsAlex(page: import("@playwright/test").Page) {
 
 test.beforeEach(async () => resetTestDatabase());
 
-test("a caregiver creates an interval reminder and sees it in upcoming care", async ({ page }) => {
+test("a caregiver manages activity-owned reminders", async ({ page }) => {
   await signInAsAlex(page);
-  await page.getByRole("button", { name: "Manage reminders" }).click();
-  const dialog = page.getByRole("dialog", { name: "Manage care" });
-  await dialog.getByLabel("Title").fill("Vitamin reminder");
-  await dialog.getByLabel("Interval hours").fill("8");
-  await dialog.getByRole("button", { name: "Save reminder" }).click();
-  await expect(page.getByText("Vitamin reminder")).toBeVisible();
-  await expect(page.getByText("Every 8 hours after activity")).toBeVisible();
+  await page.getByRole("button", { name: "Activities & reminders" }).first().click();
+  await expect(page.getByRole("heading", { name: "Activities & reminders" })).toBeVisible();
+  const feeding = page.locator(".activity-schedule-row").filter({ hasText: "Feeding" });
+  await expect(feeding.getByText("Recurring")).toBeVisible();
+  await expect(feeding.getByRole("button", { name: "Edit reminder" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Add activity" }).click();
+  const activityDialog = page.getByRole("dialog", { name: "Add activity" });
+  await activityDialog.getByLabel("Name").fill("Vitamin");
+  await activityDialog.getByRole("button", { name: "Create activity" }).click();
+  const vitamin = page.locator(".activity-schedule-row").filter({ hasText: "Vitamin" });
+  await expect(vitamin).toBeVisible();
+  await vitamin.getByRole("button", { name: "Add reminder" }).click();
+  const scheduleDialog = page.getByRole("dialog", { name: "Reminder Vitamin" });
+  await scheduleDialog.getByLabel("Interval hours").fill("8");
+  await scheduleDialog.getByRole("button", { name: "Save reminder" }).click();
+  await expect(vitamin.getByText("Every 8 hours after activity")).toBeVisible();
 });
 
-test("recurring reminders log care while one-time reminders can be completed", async ({ page }) => {
+test("recurring reminders log care while one-time reminders open a populated care form", async ({ page }) => {
   await signInAsAlex(page);
 
-  await expect(page.getByRole("button", { name: "Log care Feeding window" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Mark complete Feeding window" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Mark complete Doctor appointment" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Log care Doctor appointment" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Log care Feeding" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Mark complete Feeding" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Mark complete Doctor" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Log care Doctor" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Mark complete Doctor" }).click();
+  const dialog = page.getByRole("dialog", { name: "What happened?" });
+  await expect(dialog.getByRole("button", { name: "Doctor" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Feeding" })).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Diaper change" })).toHaveCount(0);
+  await expect(dialog.getByLabel("Provider")).toBeVisible();
+  await expect(dialog.getByLabel("Reason")).toBeVisible();
+  await dialog.getByLabel("Provider").fill("Dr. Cohen");
+  await dialog.getByLabel("Reason").fill("Checkup");
+  await dialog.getByLabel("Note").fill("Everything looked good.");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("button", { name: "Mark complete Doctor" })).toHaveCount(0);
+  await expect(page.locator(".timeline-list .event").first().getByText("Doctor", { exact: true })).toBeVisible();
 });

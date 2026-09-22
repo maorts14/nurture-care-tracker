@@ -10,7 +10,7 @@ A named type of care or event for one child, such as Feeding, Diaper change, Doc
 
 ## Activity schedule
 
-An optional timing rule owned by one care activity. It is either recurring after the most recent care session or one-time at a specific date and time.
+An optional timing rule owned by one care activity. An activity without a schedule has no reminder. A schedule, once created, is either recurring after the most recent care session or one-time at a specific date and time.
 
 ## Scheduled event
 

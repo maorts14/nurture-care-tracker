@@ -128,36 +128,54 @@ test("custom activities and their fields are managed by owners or care managers"
   assert.equal((await owner.request(`/api/activities/${activityId}`, { method: "DELETE" })).status, 204);
 });
 
-test("reminders, notes, and exports keep their intended access and data shape", async () => {
+test("activity schedules, notes, and exports keep their intended access and data shape", async () => {
   const owner = await alex();
-  const dashboard = (await (await owner.request(`/api/children/${leoId}/dashboard`)).json()) as {
+  const initialDashboard = (await (await owner.request(`/api/children/${leoId}/dashboard`)).json()) as {
     activities: Array<{ id: string; kind: string }>;
   };
-  const feedingId = dashboard.activities.find((activity) => activity.kind === "feeding")!.id;
-  const reminderResponse = await owner.request(`/api/children/${leoId}/reminders`, {
+  const feedingId = initialDashboard.activities.find((activity) => activity.kind === "feeding")!.id;
+  const createdActivity = await owner.request(`/api/children/${leoId}/activities`, {
     method: "POST",
-    body: JSON.stringify({ title: "Vitamin", activityId: feedingId, kind: "interval", intervalMinutes: 480 }),
+    body: JSON.stringify({ name: "Vitamin", color: "#198f7a", fields: [] }),
   });
-  assert.equal(reminderResponse.status, 201);
-  const reminder = (await reminderResponse.json()) as { id: string };
+  assert.equal(createdActivity.status, 201);
+  const vitamin = (await createdActivity.json()) as { id: string };
   assert.equal(
-    (await owner.request(`/api/reminders/${reminder.id}/complete`, { method: "POST" })).status,
-    404,
-    "recurring reminders cannot be completed",
+    (await owner.request(`/api/activities/${vitamin.id}/schedule`, {
+      method: "PUT",
+      body: JSON.stringify({ kind: "interval", intervalMinutes: 480 }),
+    })).status,
+    201,
   );
   assert.equal(
-    (await owner.request(`/api/reminders/${reminder.id}`, {
+    (await owner.request(`/api/activities/${vitamin.id}/schedule`, {
       method: "PUT",
       body: JSON.stringify({
-        title: "Vitamin at noon",
-        activityId: feedingId,
         kind: "one_time",
         scheduledFor: "2026-09-22T09:00:00.000Z",
       }),
     })).status,
-    204,
+    201,
   );
-  assert.equal((await owner.request(`/api/reminders/${reminder.id}/complete`, { method: "POST" })).status, 204);
+  assert.equal(
+    (await owner.request(`/api/children/${leoId}/logs`, {
+      method: "POST",
+      body: JSON.stringify({
+        activityId: vitamin.id,
+        eventTime: "2026-09-22T09:05:00.000Z",
+        eventTimezone: "Asia/Jerusalem",
+        fieldValues: {},
+        completeOneTimeSchedule: true,
+      }),
+    })).status,
+    201,
+  );
+  const completedDashboard = (await (await owner.request(`/api/children/${leoId}/dashboard`)).json()) as {
+    timeline: Array<{ activity_id: string }>;
+    activities: Array<{ id: string; schedule: unknown }>;
+  };
+  assert.equal(completedDashboard.timeline.some((log) => log.activity_id === vitamin.id), true);
+  assert.equal(completedDashboard.activities.find((activity) => activity.id === vitamin.id)?.schedule, null);
 
   const maya = new ApiClient();
   await maya.signIn("maya@nurture.local", "nurture-demo");

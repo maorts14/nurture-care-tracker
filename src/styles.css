@@ -1203,12 +1203,14 @@ nav em {
   position: relative;
   display: flex;
   justify-content: center;
+  align-items: flex-start;
+  padding-top: 5px;
 }
 .event-line::after {
   content: "";
   width: 1px;
   position: absolute;
-  top: 36px;
+  top: 40px;
   bottom: -8px;
   background: #e3ded6;
 }
@@ -1226,7 +1228,7 @@ nav em {
   font-style: normal;
 }
 .event-content {
-  padding: 5px 0 18px;
+  padding: 0 0 18px;
 }
 .event-title {
   display: flex;
@@ -2343,6 +2345,125 @@ nav em {
   padding: clamp(24px, 6vw, 76px);
   background: #fbfaf8;
 }
+.activities-reminders-page {
+  min-height: 100vh;
+  padding: clamp(24px, 6vw, 76px);
+  background: #fbfaf8;
+}
+.activities-reminders-heading,
+.activities-reminders-list {
+  max-width: 780px;
+  margin-inline: auto;
+}
+.activities-reminders-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+}
+.activities-reminders-heading h1 {
+  margin: 4px 0;
+  font-size: clamp(28px, 5vw, 46px);
+  letter-spacing: -1.8px;
+}
+.activities-reminders-heading p {
+  max-width: 570px;
+  margin: 10px 0 0;
+  color: var(--text-muted);
+  font-size: calc(14px + var(--ui-text-scale));
+  line-height: 1.55;
+}
+.activities-reminders-list {
+  margin-top: 38px;
+  border-top: 1px solid #e2ddd5;
+}
+.activity-schedule-row {
+  min-height: 88px;
+}
+.activity-schedule-row .interactive-row-content {
+  display: grid;
+  grid-template-columns: auto minmax(150px, 1fr) minmax(190px, 0.9fr);
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+}
+.activity-schedule-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+}
+.activity-schedule-summary h2,
+.activity-schedule-status strong,
+.activity-schedule-status small,
+.activity-schedule-summary p {
+  margin: 0;
+}
+.activity-schedule-summary h2 {
+  font-size: 17px;
+}
+.activity-schedule-summary p,
+.activity-schedule-status > span,
+.activity-schedule-status small {
+  color: var(--text-muted);
+  font-size: calc(13px + var(--ui-text-scale));
+}
+.activity-schedule-status {
+  display: grid;
+  gap: 3px;
+}
+.activity-schedule-status strong {
+  display: grid;
+  gap: 2px;
+  color: #302c28;
+  font-size: calc(14px + var(--ui-text-scale));
+}
+.activity-schedule-empty {
+  color: var(--text-muted) !important;
+  font-weight: 500;
+}
+.activity-schedule-row .interactive-row-actions {
+  gap: 8px;
+}
+.activity-schedule-row .interactive-row-actions .text-button {
+  display: inline-flex;
+  width: auto;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.activity-editor-modal {
+  max-width: 470px;
+}
+.activity-editor-modal h2 {
+  margin: 0 0 20px;
+}
+.activity-editor-modal h3 {
+  margin: 28px 0 12px;
+  font-size: 17px;
+}
+.activity-editor-modal .modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 22px;
+}
+.activity-editor-modal .modal-actions .submit {
+  flex: 1;
+}
+.activity-field-form {
+  padding-top: 4px;
+  border-top: 1px solid #e8e1d8;
+}
+.activity-schedule-modal-copy {
+  margin: -14px 0 18px;
+  color: var(--text-muted);
+}
 .care-pauses-page header,
 .care-pause-groups,
 .care-pause-empty {
@@ -3240,6 +3361,41 @@ button.interactive-row-content { cursor: pointer; }
   }
   .analytics-history-list {
     max-height: 250px;
+  }
+  .activities-reminders-page {
+    padding: 20px 16px 28px;
+  }
+  .activities-reminders-heading {
+    display: grid;
+    gap: 18px;
+  }
+  .activities-reminders-heading .primary {
+    justify-self: start;
+  }
+  .activities-reminders-list {
+    margin-top: 26px;
+  }
+  .activity-schedule-row {
+    min-height: 0;
+  }
+  .activity-schedule-row .interactive-row-content {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 12px;
+    padding: 16px 0;
+  }
+  .activity-schedule-status {
+    grid-column: 2;
+  }
+  .activity-schedule-row .interactive-row-actions .text-button {
+    width: 34px;
+    min-height: 34px;
+    padding: 0;
+    justify-content: center;
+    font-size: 0;
+  }
+  .activity-schedule-row .interactive-row-actions .text-button svg {
+    width: 17px;
+    height: 17px;
   }
   .analytics-heading-row {
     gap: 14px;

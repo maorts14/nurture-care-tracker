@@ -74,6 +74,21 @@ CREATE TABLE activity_field_definition (
   UNIQUE (activity_id, field_key)
 );
 
+CREATE TABLE activity_schedule (
+  activity_id UUID PRIMARY KEY REFERENCES activity_definition(id) ON DELETE CASCADE,
+  kind reminder_kind NOT NULL,
+  interval_minutes INTEGER CHECK (interval_minutes > 0),
+  scheduled_for TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (
+    (kind = 'interval' AND interval_minutes IS NOT NULL AND scheduled_for IS NULL AND completed_at IS NULL)
+    OR
+    (kind = 'one_time' AND interval_minutes IS NULL AND scheduled_for IS NOT NULL)
+  )
+);
+
 CREATE TABLE care_gap (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   child_id UUID NOT NULL REFERENCES child(id) ON DELETE CASCADE,
@@ -116,18 +131,6 @@ CREATE TABLE activity_measurement (
   field_id UUID NOT NULL REFERENCES activity_field_definition(id) ON DELETE CASCADE,
   value_numeric NUMERIC NOT NULL,
   PRIMARY KEY (log_id, field_id)
-);
-
-CREATE TABLE reminder (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  child_id UUID NOT NULL REFERENCES child(id) ON DELETE CASCADE,
-  activity_id UUID REFERENCES activity_definition(id) ON DELETE SET NULL,
-  kind reminder_kind NOT NULL,
-  interval_minutes INTEGER CHECK (interval_minutes > 0),
-  scheduled_for TIMESTAMPTZ,
-  title TEXT NOT NULL,
-  completed_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE child_note (

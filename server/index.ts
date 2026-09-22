@@ -655,7 +655,7 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
     response.status(403).json({ error: "Child access is required" });
     return;
   }
-  const [timeline, insightPreference, activities, fields, reminders, gaps, analyticsRows] = await Promise.all([
+  const [timeline, insightPreference, activities, fields, schedules, gaps, analyticsRows] = await Promise.all([
     pool.query(
       `SELECT log.id, log.activity_id, log.event_time, log.event_timezone, log.field_values, log.note, log.created_at, log.created_by AS created_by_id, activity.name AS activity_name, activity.kind, activity.color, COALESCE(author.display_name, 'Deleted caregiver') AS created_by, COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions, comment_preview.comment_count, comment_preview.first_comment, comment_preview.first_comment_author FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id LEFT JOIN app_user AS author ON author.id = log.created_by LEFT JOIN LATERAL (SELECT COUNT(*)::int AS comment_count, (array_agg(comment.body ORDER BY comment.created_at, comment.id))[1] AS first_comment, (array_agg(comment_author.display_name ORDER BY comment.created_at, comment.id))[1] AS first_comment_author FROM log_comment AS comment JOIN app_user AS comment_author ON comment_author.id = comment.created_by WHERE comment.log_id = log.id) AS comment_preview ON true WHERE log.child_id = $1 ORDER BY log.event_time DESC LIMIT 100`,
       [childId],
@@ -673,7 +673,13 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
       [childId],
     ),
     pool.query(
-      `SELECT reminder.*, activity.name AS activity_name, activity.color FROM reminder LEFT JOIN activity_definition AS activity ON activity.id = reminder.activity_id WHERE reminder.child_id = $1 AND reminder.completed_at IS NULL ORDER BY reminder.scheduled_for NULLS LAST`,
+      `SELECT schedule.activity_id, schedule.kind, schedule.interval_minutes, schedule.scheduled_for
+       FROM activity_schedule AS schedule
+       JOIN activity_definition AS activity ON activity.id = schedule.activity_id
+       WHERE activity.child_id = $1
+         AND activity.archived_at IS NULL
+         AND schedule.completed_at IS NULL
+       ORDER BY schedule.scheduled_for NULLS LAST`,
       [childId],
     ),
     pool.query(
@@ -808,9 +814,13 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
       [childId],
     ),
   ]);
+  const scheduleByActivityId = new Map(
+    schedules.rows.map((schedule) => [schedule.activity_id, schedule]),
+  );
   const activitiesWithFields = activities.rows.map((activity) => ({
     ...activity,
     fields: fields.rows.filter((field) => field.activity_id === activity.id),
+    schedule: scheduleByActivityId.get(activity.id) ?? null,
   }));
   const metrics = (row: {
     count: number;
@@ -863,7 +873,6 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
     role: access.rows[0].role,
     timeline: timeline.rows,
     activities: activitiesWithFields,
-    reminders: reminders.rows,
     gaps: gaps.rows,
     analytics,
     first_record_date: analyticsRows.rows[0]?.first_record_date
@@ -902,7 +911,7 @@ app.post("/api/children/:childId/logs", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
   const { childId } = request.params;
-  const { activityId, eventTime, eventTimezone, fieldValues, portions, note } =
+  const { activityId, eventTime, eventTimezone, fieldValues, portions, note, completeOneTimeSchedule } =
     request.body as {
       activityId: string;
       eventTime: string;
@@ -914,6 +923,7 @@ app.post("/api/children/:childId/logs", async (request, response) => {
         amountMl: number;
       }[];
       note?: string;
+      completeOneTimeSchedule?: boolean;
     };
   if (!activityId || !eventTime || !eventTimezone) {
     response
@@ -979,6 +989,22 @@ app.post("/api/children/:childId/logs", async (request, response) => {
          FROM jsonb_to_recordset($2::jsonb) AS portion(kind text, delivery_method text, amount_ml numeric, position smallint)`,
         [inserted.rows[0].id, JSON.stringify(feedingPortions)],
       );
+    if (completeOneTimeSchedule) {
+      const completedSchedule = await client.query(
+        `UPDATE activity_schedule
+         SET completed_at = now(), updated_at = now()
+         WHERE activity_id = $1
+           AND kind = 'one_time'
+           AND completed_at IS NULL
+         RETURNING activity_id`,
+        [activityId],
+      );
+      if (completedSchedule.rowCount !== 1) {
+        await client.query("ROLLBACK");
+        response.status(409).json({ error: "One-time reminder is no longer available" });
+        return;
+      }
+    }
     await client.query("COMMIT");
     io.to(childRoom(childId)).emit("timeline:changed");
     response.status(201).json(inserted.rows[0]);
@@ -1358,6 +1384,9 @@ app.delete("/api/activities/:activityId", async (request, response) => {
     response.status(403).json({ error: "Owner or care manager access is required" });
     return;
   }
+  await pool.query("DELETE FROM activity_schedule WHERE activity_id = $1", [
+    request.params.activityId,
+  ]);
   io.to(childRoom(archived.rows[0].child_id)).emit("timeline:changed");
   response.status(204).end();
 });
@@ -1388,64 +1417,15 @@ app.put("/api/activities/:activityId", async (request, response) => {
   io.to(childRoom(updated.rows[0].child_id)).emit("timeline:changed");
   response.status(204).end();
 });
-app.post("/api/children/:childId/reminders", async (request, response) => {
+app.put("/api/activities/:activityId/schedule", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
-  const { childId } = request.params;
-  const { title, activityId, kind, intervalMinutes, scheduledFor } =
-    request.body as {
-      title: string;
-      activityId?: string;
-      kind: "interval" | "one_time";
-      intervalMinutes?: number;
-      scheduledFor?: string;
-    };
-  const access = await membership(childId, session.userId);
-  if (!['owner', 'care_manager'].includes(access.rows[0]?.role ?? '')) {
-    response.status(403).json({ error: "Owner or care manager access is required" });
-    return;
-  }
-  const inserted = await pool.query(
-    "INSERT INTO reminder (child_id, activity_id, kind, interval_minutes, scheduled_for, title) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *",
-    [
-      childId,
-      activityId ?? null,
-      kind,
-      intervalMinutes ?? null,
-      scheduledFor ?? null,
-      title,
-    ],
-  );
-  io.to(childRoom(childId)).emit("timeline:changed");
-  response.status(201).json(inserted.rows[0]);
-});
-app.post("/api/reminders/:reminderId/complete", async (request, response) => {
-  const session = requireSession(request, response);
-  if (!session) return;
-  const result = await pool.query(
-    "UPDATE reminder SET completed_at = now() WHERE id = $1 AND kind = 'one_time' AND completed_at IS NULL AND child_id IN (SELECT child_id FROM child_membership WHERE user_id = $2) RETURNING child_id",
-    [request.params.reminderId, session.userId],
-  );
-  if (result.rowCount !== 1) {
-    response.status(404).json({ error: "Reminder not found" });
-    return;
-  }
-  io.to(childRoom(result.rows[0].child_id)).emit("timeline:changed");
-  response.status(204).end();
-});
-app.put("/api/reminders/:reminderId", async (request, response) => {
-  const session = requireSession(request, response);
-  if (!session) return;
-  const { title, activityId, kind, intervalMinutes, scheduledFor } =
-    request.body as {
-      title: string;
-      activityId?: string | null;
+  const { kind, intervalMinutes, scheduledFor } = request.body as {
       kind: "interval" | "one_time";
       intervalMinutes?: number | null;
       scheduledFor?: string | null;
-    };
+  };
   if (
-    !title ||
     !["interval", "one_time"].includes(kind) ||
     (kind === "interval" && (!intervalMinutes || intervalMinutes < 1)) ||
     (kind === "one_time" && !scheduledFor)
@@ -1456,30 +1436,51 @@ app.put("/api/reminders/:reminderId", async (request, response) => {
     return;
   }
   const updated = await pool.query<{ child_id: string }>(
-    "UPDATE reminder SET title = $1, activity_id = $2, kind = $3, interval_minutes = $4, scheduled_for = $5 WHERE id = $6 AND child_id IN (SELECT child_id FROM child_membership WHERE user_id = $7 AND role IN ('owner', 'care_manager')) RETURNING child_id",
+    `INSERT INTO activity_schedule (activity_id, kind, interval_minutes, scheduled_for)
+     SELECT activity.id, $2, $3, $4
+     FROM activity_definition AS activity
+     JOIN child_membership AS membership ON membership.child_id = activity.child_id
+     WHERE activity.id = $1
+       AND activity.archived_at IS NULL
+       AND membership.user_id = $5
+       AND membership.role IN ('owner', 'care_manager')
+     ON CONFLICT (activity_id) DO UPDATE
+       SET kind = EXCLUDED.kind,
+           interval_minutes = EXCLUDED.interval_minutes,
+           scheduled_for = EXCLUDED.scheduled_for,
+           completed_at = NULL,
+           updated_at = now()
+     RETURNING (
+       SELECT child_id FROM activity_definition WHERE id = activity_schedule.activity_id
+     ) AS child_id`,
     [
-      title,
-      activityId ?? null,
+      request.params.activityId,
       kind,
       kind === "interval" ? intervalMinutes : null,
       kind === "one_time" ? scheduledFor : null,
-      request.params.reminderId,
       session.userId,
     ],
   );
   if (updated.rowCount !== 1) {
-    response.status(404).json({ error: "Reminder not found" });
+    response.status(404).json({ error: "Activity not found" });
     return;
   }
   io.to(childRoom(updated.rows[0].child_id)).emit("timeline:changed");
-  response.status(204).end();
+  response.status(201).json(updated.rows[0]);
 });
-app.delete("/api/reminders/:reminderId", async (request, response) => {
+app.delete("/api/activities/:activityId/schedule", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
   const result = await pool.query(
-    "DELETE FROM reminder WHERE id = $1 AND child_id IN (SELECT child_id FROM child_membership WHERE user_id = $2 AND role IN ('owner', 'care_manager')) RETURNING child_id",
-    [request.params.reminderId, session.userId],
+    `DELETE FROM activity_schedule AS schedule
+     USING activity_definition AS activity, child_membership AS membership
+     WHERE schedule.activity_id = activity.id
+       AND activity.id = $1
+       AND membership.child_id = activity.child_id
+       AND membership.user_id = $2
+       AND membership.role IN ('owner', 'care_manager')
+     RETURNING activity.child_id`,
+    [request.params.activityId, session.userId],
   );
   if (result.rowCount !== 1) {
     response.status(404).json({ error: "Reminder not found" });
@@ -1622,13 +1623,18 @@ app.get("/api/children/:childId/export.csv", async (request, response) => {
     response.status(403).json({ error: "Child access is required" });
     return;
   }
-  const [logs, reminders] = await Promise.all([
+  const [logs, schedules] = await Promise.all([
     pool.query(
       `SELECT activity.name, log.event_time, log.field_values, log.note, author.display_name, COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id JOIN app_user AS author ON author.id = log.created_by WHERE log.child_id = $1 ORDER BY log.event_time DESC`,
       [request.params.childId],
     ),
     pool.query(
-      "SELECT title, kind, scheduled_for, interval_minutes FROM reminder WHERE child_id = $1 AND completed_at IS NULL",
+      `SELECT activity.name, schedule.kind, schedule.scheduled_for, schedule.interval_minutes
+       FROM activity_schedule AS schedule
+       JOIN activity_definition AS activity ON activity.id = schedule.activity_id
+       WHERE activity.child_id = $1
+         AND activity.archived_at IS NULL
+         AND schedule.completed_at IS NULL`,
       [request.params.childId],
     ),
   ]);
@@ -1653,10 +1659,10 @@ app.get("/api/children/:childId/export.csv", async (request, response) => {
         .map(escape)
         .join(","),
     ),
-    ...reminders.rows.map((row) =>
+    ...schedules.rows.map((row) =>
       [
         "upcoming",
-        row.title,
+        row.name,
         row.scheduled_for?.toISOString() ??
           `after ${row.interval_minutes} minutes`,
         row.kind,

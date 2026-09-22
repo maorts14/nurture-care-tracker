@@ -1,6 +1,7 @@
 import { FormEvent, Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { AnalyticsView } from "./AnalyticsView";
+import { ActivitiesRemindersPage } from "./ActivitiesRemindersPage";
 import { AccountDataPage } from "./AccountDataPage";
 import { CaregiversPage } from "./CaregiversPage";
 import { CarePausesPage, type CarePause } from "./CarePausesPage";
@@ -13,7 +14,6 @@ import { LanguagePicker } from "./components/LanguagePicker";
 import { ModalBackdrop } from "./components/ModalBackdrop";
 import { FeedmeBrand } from "./components/FeedmeBrand";
 import { HelpLegalPanel, PublicSite, type PublicPage } from "./PublicSite";
-import { ReminderScheduleFields } from "./components/ReminderScheduleFields";
 import { SidebarAccount } from "./components/SidebarAccount";
 import { TimezoneSelect } from "./components/TimezoneSelect";
 import { timeZoneLabel } from "./timezones";
@@ -56,6 +56,11 @@ type Activity = {
   kind: "feeding" | "diaper" | "custom";
   color: string;
   fields: Field[];
+  schedule: {
+    kind: "interval" | "one_time";
+    interval_minutes?: number;
+    scheduled_for?: string;
+  } | null;
 };
 type Event = {
   id: string;
@@ -83,14 +88,6 @@ type FeedingPortionDraft = {
   deliveryMethod: FeedingPortion["delivery_method"];
   amountMl: string;
 };
-type Reminder = {
-  id: string;
-  kind: "interval" | "one_time";
-  interval_minutes?: number;
-  scheduled_for?: string;
-  title: string;
-  activity_id?: string;
-};
 type ActivityAnalytics = {
   activity_id: string;
   average: ActivityMetrics;
@@ -108,7 +105,6 @@ type Dashboard = {
   role: "owner" | "care_manager" | "caregiver" | "viewer";
   timeline: Event[];
   activities: Activity[];
-  reminders: Reminder[];
   gaps: CarePause[];
   analytics: ActivityAnalytics[];
   insight_activity_ids: string[] | null;
@@ -152,9 +148,7 @@ type LeavePreview = {
   successor_name?: string;
 };
 type Panel =
-  | "activity"
   | "field"
-  | "reminder"
   | "notes"
   | "invite"
   | "children"
@@ -278,6 +272,7 @@ export default function App() {
   const [createChildOpen, setCreateChildOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<Event | null>(null);
+  const [completingScheduleActivityId, setCompletingScheduleActivityId] = useState<string | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
   const [helpLegalOpen, setHelpLegalOpen] = useState(false);
@@ -297,7 +292,6 @@ export default function App() {
   const [at, setAt] = useState(localDateTime());
   const [notes, setNotes] = useState<Note[]>([]);
   const [selected, setSelected] = useState<Event | null>(null);
-  const [selectedReminder, setSelectedReminder] = useState<Reminder | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [comment, setComment] = useState("");
   const [inviteUrl, setInviteUrl] = useState("");
@@ -313,6 +307,7 @@ export default function App() {
   const insightsOpen = /^\/children\/[^/]+\/insights$/.test(routePath);
   const caregiversOpen = /^\/children\/[^/]+\/caregivers$/.test(routePath);
   const carePausesOpen = /^\/children\/[^/]+\/care-pauses$/.test(routePath);
+  const activitiesRemindersOpen = /^\/children\/[^/]+\/activities-reminders$/.test(routePath);
   const owner = dash?.role === "owner";
   const canManage = owner || dash?.role === "care_manager";
   const write = dash?.role !== "viewer";
@@ -390,10 +385,10 @@ export default function App() {
   const feed = events.filter((event) => event.kind === "feeding");
   const current = dash?.activities.find((item) => item.id === activityId);
   const lastFeed = feed[0];
-  const feedReminder = dash?.reminders.find(
-    (item) =>
-      item.kind === "interval" && item.activity_id === lastFeed?.activity_id,
-  );
+  const feedReminder = dash?.activities.find(
+    (activity) =>
+      activity.id === lastFeed?.activity_id && activity.schedule?.kind === "interval",
+  )?.schedule;
   const expected = useMemo(
     () =>
       lastFeed && feedReminder?.interval_minutes
@@ -402,7 +397,7 @@ export default function App() {
               feedReminder.interval_minutes * 60_000,
           )
         : null,
-    [lastFeed?.id, feedReminder?.id],
+    [lastFeed?.id, feedReminder?.interval_minutes],
   );
   const navigate = (path: string, replace = false) => {
     const destination = new URL(path, window.location.origin);
@@ -469,7 +464,7 @@ export default function App() {
   }, [routePath]);
   useEffect(() => {
     if (!user) return;
-    const match = routePath.match(/^\/children\/([^/]+)(?:\/(?:insights|caregivers|care-pauses))?$/);
+    const match = routePath.match(/^\/children\/([^/]+)(?:\/(?:insights|caregivers|care-pauses|activities-reminders))?$/);
     if (match) {
       const routeChild = children.find((item) => item.id === match[1]);
       if (routeChild) setChild(routeChild);
@@ -524,6 +519,7 @@ export default function App() {
     const insightsMatch = routePath.match(/^\/children\/[^/]+\/insights$/);
     const caregiversMatch = routePath.match(/^\/children\/[^/]+\/caregivers$/);
     const carePausesMatch = routePath.match(/^\/children\/[^/]+\/care-pauses$/);
+    const activitiesRemindersMatch = routePath.match(/^\/children\/[^/]+\/activities-reminders$/);
     if (timelineMatch && child)
       document.title = locale === "he" ? `ציר הזמן של ${child.name}` : `${child.name}’s timeline`;
     else if (insightsMatch && child)
@@ -532,6 +528,8 @@ export default function App() {
       document.title = locale === "he" ? "מטפלים" : "Caregivers";
     else if (carePausesMatch)
       document.title = locale === "he" ? "הפסקות טיפול" : "Care pauses";
+    else if (activitiesRemindersMatch)
+      document.title = locale === "he" ? "פעילויות ותזכורות" : "Activities & reminders";
     else document.title = titles[routePath] ?? "Feedme";
   }, [routePath, locale, child?.id, child?.name]);
   const clearInvite = () => {
@@ -562,6 +560,7 @@ export default function App() {
       const target = event.target as HTMLElement;
       if (target?.classList.contains("modal-backdrop")) {
         setPanel(null);
+        setCompletingScheduleActivityId(null);
         setLogOpen(false);
         setSelected(null);
         setCreateChildOpen(false);
@@ -744,6 +743,8 @@ export default function App() {
         fieldValues,
         portions: current.kind === "feeding" ? portions : undefined,
         note,
+        completeOneTimeSchedule:
+          !editingLog && completingScheduleActivityId === activityId,
       }),
     });
     setNote("");
@@ -751,6 +752,7 @@ export default function App() {
       { kind: "breast_milk", deliveryMethod: "bottle", amountMl: "" },
     ]);
     setEditingLog(null);
+    setCompletingScheduleActivityId(null);
     setLogOpen(false);
     await loadDash(child.id);
   }
@@ -832,61 +834,42 @@ export default function App() {
     setPanel(null);
     await loadDash(child.id);
   }
-  async function remind(event: FormEvent<HTMLFormElement>) {
+  async function saveActivitySchedule(
+    activity: Activity,
+    event: FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
     if (!child) return;
     const form = new FormData(event.currentTarget);
-    const kind = String(form.get("kind"));
+    const kind = String(form.get("kind")) as "interval" | "one_time";
     const when = String(form.get("when"));
     if (kind === "one_time" && !when)
       throw new Error(t("Choose a date and time."));
-    await api(`/api/children/${child.id}/reminders`, {
-      method: "POST",
+    await api(`/api/activities/${activity.id}/schedule`, {
+      method: "PUT",
       body: JSON.stringify({
-        title: form.get("title"),
-        activityId: form.get("activityId") || null,
         kind,
-        intervalMinutes:
-          kind === "interval" ? Number(form.get("hours")) * 60 : null,
+        intervalMinutes: kind === "interval" ? Number(form.get("hours")) * 60 : null,
         scheduledFor: kind === "one_time" ? new Date(when).toISOString() : null,
       }),
     });
-    setPanel(null);
     await loadDash(child.id);
   }
-  async function updateReminder(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!child || !selectedReminder) return;
-    const form = new FormData(event.currentTarget);
-    const kind = String(form.get("kind")) as Reminder["kind"];
-    const when = String(form.get("when"));
-    if (kind === "one_time" && !when)
-      throw new Error(t("Choose a date and time."));
-    await api(`/api/reminders/${selectedReminder.id}`, {
-      method: "PUT",
-      body: JSON.stringify({
-        title: form.get("title"),
-        activityId: form.get("activityId") || null,
-        kind,
-        intervalMinutes:
-          kind === "interval" ? Number(form.get("hours")) * 60 : null,
-        scheduledFor:
-          kind === "one_time" ? new Date(when).toISOString() : null,
-      }),
-    });
-    setSelectedReminder(null);
-    await loadDash(child.id);
-  }
-  async function completeReminder(item: Reminder) {
-    if (!child) return;
-    await api(`/api/reminders/${item.id}/complete`, { method: "POST" });
-    await loadDash(child.id);
-  }
-  async function deleteReminder(item: Reminder) {
+  async function deleteActivitySchedule(activity: Activity) {
     if (!child || !confirm(t("Delete this reminder?"))) return;
-    await api(`/api/reminders/${item.id}`, { method: "DELETE" });
-    setSelectedReminder((current) => (current?.id === item.id ? null : current));
+    await api(`/api/activities/${activity.id}/schedule`, { method: "DELETE" });
     await loadDash(child.id);
+  }
+  function completeScheduledEvent(activity: Activity) {
+    setActivityId(activity.id);
+    setAt(localDateTime());
+    setNote("");
+    setFeedingPortions([
+      { kind: "breast_milk", deliveryMethod: "bottle", amountMl: "" },
+    ]);
+    setEditingLog(null);
+    setCompletingScheduleActivityId(activity.id);
+    setLogOpen(true);
   }
   async function saveCarePause(
     pause: CarePause | null,
@@ -1019,6 +1002,7 @@ export default function App() {
     setNote(log.note ?? "");
     setSelected(null);
     setEditingLog(log);
+    setCompletingScheduleActivityId(null);
     setLogOpen(true);
   }
   const setLocale = async (locale: User["locale"]) => {
@@ -1278,7 +1262,7 @@ export default function App() {
         aria-label={t("Close navigation")}
         onClick={() => setMobileSidebarOpen(false)}
       />
-      <section className={`workspace ${insightsOpen || caregiversOpen || carePausesOpen ? "insights-workspace" : ""}`}>
+      <section className={`workspace ${insightsOpen || caregiversOpen || carePausesOpen || activitiesRemindersOpen ? "insights-workspace" : ""}`}>
         {insightsOpen ? (
           <AnalyticsView
             child={child}
@@ -1309,6 +1293,20 @@ export default function App() {
             onOpenNavigation={() => setMobileSidebarOpen(true)}
             onSave={saveCarePause}
             onDelete={deleteCarePause}
+          />
+        ) : activitiesRemindersOpen ? (
+          <ActivitiesRemindersPage
+            locale={user.locale}
+            activities={dash.activities}
+            canManage={canManage}
+            onBack={() => navigate(`/children/${child.id}`)}
+            onOpenNavigation={() => setMobileSidebarOpen(true)}
+            onCreateActivity={createActivity}
+            onUpdateActivity={updateActivity}
+            onArchiveActivity={archiveActivity}
+            onAddField={addField}
+            onSaveSchedule={saveActivitySchedule}
+            onDeleteSchedule={deleteActivitySchedule}
           />
         ) : (
           <>
@@ -1360,6 +1358,7 @@ export default function App() {
                     },
                   ]);
                   setEditingLog(null);
+                  setCompletingScheduleActivityId(null);
                   setLogOpen(true);
                 }}
               >
@@ -1402,7 +1401,7 @@ export default function App() {
           </div>
         </section>
         <UpcomingList
-          reminders={dash.reminders}
+          activities={dash.activities}
           locale={user.locale}
           canManage={canManage}
           onLogActivity={write ? (id) => {
@@ -1412,12 +1411,12 @@ export default function App() {
               { kind: "breast_milk", deliveryMethod: "bottle", amountMl: "" },
             ]);
             setEditingLog(null);
+            setCompletingScheduleActivityId(null);
             setLogOpen(true);
           } : undefined}
-          onOpen={() => setPanel("reminder")}
-          onSelect={setSelectedReminder}
-          onComplete={completeReminder}
-          onDelete={deleteReminder}
+          onOpen={() => navigate(`/children/${child.id}/activities-reminders`)}
+          onComplete={completeScheduledEvent}
+          onDelete={deleteActivitySchedule}
         />
         <section className="timeline-area">
           <div className="section-head">
@@ -1669,9 +1668,12 @@ export default function App() {
           onClickCapture={() => setMobileSidebarOpen(false)}
         >
           {canManage && (
-            <button onClick={() => setPanel("activity")}>
+            <button
+              className={activitiesRemindersOpen ? "nav-active" : ""}
+              onClick={() => navigate(`/children/${child.id}/activities-reminders`)}
+            >
               <Settings2 size={18} />
-              {t("Manage care")}
+              {t("Activities & reminders")}
             </button>
           )}
           <button
@@ -1739,17 +1741,6 @@ export default function App() {
           />
         </ModalBackdrop>
       )}
-      {selectedReminder && (
-        <ReminderDetailModal
-          reminder={selectedReminder}
-          activities={dash.activities}
-          locale={user.locale}
-          canManage={canManage}
-          onClose={() => setSelectedReminder(null)}
-          onSave={updateReminder}
-          onDelete={() => deleteReminder(selectedReminder)}
-        />
-      )}
       {logOpen && (
         <LogModal
           locale={user.locale}
@@ -1761,8 +1752,10 @@ export default function App() {
           note={note}
           createdBy={editingLog?.created_by}
           editable={!editingLog || canEditLog(editingLog)}
+          fixedActivity={Boolean(completingScheduleActivityId)}
           onClose={() => {
             setEditingLog(null);
+            setCompletingScheduleActivityId(null);
             setLogOpen(false);
           }}
           onActivity={setActivityId}
@@ -1778,17 +1771,11 @@ export default function App() {
         <ManageModal
           locale={user.locale}
           panel={panel}
-          activities={dash.activities}
           children={children}
           notes={notes}
           inviteUrl={inviteUrl}
           canManage={canManage}
           onClose={() => setPanel(null)}
-          onActivity={createActivity}
-          onUpdateActivity={updateActivity}
-          onArchive={archiveActivity}
-          onField={addField}
-          onReminder={remind}
           onInvite={invite}
           onNote={addNote}
           onChild={createChild}
@@ -1925,120 +1912,25 @@ function InvitationPreviewModal({
   );
 }
 
-function ReminderDetailModal({
-  reminder,
+function UpcomingList({
   activities,
   locale,
   canManage,
-  onClose,
-  onSave,
-  onDelete,
-}: {
-  reminder: Reminder;
-  activities: Activity[];
-  locale: User["locale"];
-  canManage: boolean;
-  onClose: () => void;
-  onSave: (event: FormEvent<HTMLFormElement>) => void;
-  onDelete: () => void;
-}) {
-  const t = (text: string) => translate(locale, text);
-  const activity = activities.find((item) => item.id === reminder.activity_id);
-  const schedule =
-    reminder.kind === "one_time" && reminder.scheduled_for
-      ? new Intl.DateTimeFormat(locale === "he" ? "he-IL" : "en-US", {
-          dateStyle: "medium",
-          timeStyle: "short",
-        }).format(new Date(reminder.scheduled_for))
-      : `${t("Every")} ${Math.round((reminder.interval_minutes ?? 0) / 60)} ${t("hours after activity")}`;
-  const heading = (
-    <header className="reminder-detail-heading">
-      <h2>{reminder.title}</h2>
-      <button
-        type="button"
-        className="reminder-detail-close"
-        onClick={onClose}
-        aria-label={t("Close")}
-      >
-        <X size={22} />
-      </button>
-    </header>
-  );
-
-  return (
-    <ModalBackdrop onClose={onClose}>
-      <section className="log-modal reminder-detail-modal" role="dialog" aria-modal="true" aria-label={reminder.title}>
-        {canManage ? (
-          <form onSubmit={onSave}>
-            {heading}
-            <label>
-              {t("Title")}
-              <input name="title" defaultValue={reminder.title} required />
-            </label>
-            <label>
-              {t("Activity")}
-              <select name="activityId" defaultValue={reminder.activity_id ?? ""}>
-                <option value="">{t("None")}</option>
-                {activities.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {t(item.name)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <ReminderScheduleFields
-              locale={locale}
-              initialKind={reminder.kind}
-              initialIntervalHours={(reminder.interval_minutes ?? 180) / 60}
-              initialScheduledFor={reminder.scheduled_for}
-            />
-            <div className="modal-actions">
-              <button className="primary submit">{t("Save changes")}</button>
-              <button type="button" className="text-button danger" onClick={onDelete}>
-                {t("Delete")}
-              </button>
-            </div>
-          </form>
-        ) : (
-          <>
-            {heading}
-            <dl className="event-detail-list">
-              <div>
-                <dt>{t("Activity")}</dt>
-                <dd>{activity ? t(activity.name) : t("None")}</dd>
-              </div>
-              <div>
-                <dt>{t("Schedule")}</dt>
-                <dd>{schedule}</dd>
-              </div>
-            </dl>
-          </>
-        )}
-      </section>
-    </ModalBackdrop>
-  );
-}
-
-function UpcomingList({
-  reminders,
-  locale,
-  canManage,
   onOpen,
-  onSelect,
   onComplete,
   onDelete,
   onLogActivity,
 }: {
-  reminders: Reminder[];
+  activities: Activity[];
   locale: User["locale"];
   canManage: boolean;
   onOpen: () => void;
-  onSelect: (reminder: Reminder) => void;
-  onComplete: (reminder: Reminder) => void;
-  onDelete: (reminder: Reminder) => void;
+  onComplete: (activity: Activity) => void;
+  onDelete: (activity: Activity) => void;
   onLogActivity?: (activityId: string) => void;
 }) {
   const t = (text: string) => translate(locale, text);
+  const scheduledActivities = activities.filter((activity) => activity.schedule);
   return (
     <section className="upcoming-list" aria-label={t("Upcoming care")}>
       <div className="section-head upcoming-list-head">
@@ -2047,23 +1939,22 @@ function UpcomingList({
         </div>
         {canManage && (
           <button className="text-button" onClick={onOpen}>
-            {t("Manage reminders")} <Plus size={15} />
+            {t("Activities & reminders")} <Plus size={15} />
           </button>
         )}
       </div>
-      {reminders.length ? (
+      {scheduledActivities.length ? (
         <div className="upcoming-items">
-          {reminders.map((reminder) => (
-            <article
-              className="due-item"
-              key={reminder.id}
-              onClick={(clickEvent) => {
-                if ((clickEvent.target as HTMLElement).closest("button")) return;
-                onSelect(reminder);
-              }}
-            >
+          {scheduledActivities.map((activity) => {
+            const schedule = activity.schedule!;
+            const description =
+              schedule.kind === "one_time" && schedule.scheduled_for
+                ? clock(schedule.scheduled_for, locale)
+                : `${t("Every")} ${Math.round((schedule.interval_minutes ?? 0) / 60)} ${t("hours after activity")}`;
+            return (
+            <article className="due-item" key={activity.id}>
               <span className="due-icon">
-                {reminder.kind === "one_time" ? (
+                {schedule.kind === "one_time" ? (
                   <HeartPulse size={17} />
                 ) : (
                   <Utensils size={17} />
@@ -2071,39 +1962,28 @@ function UpcomingList({
               </span>
               <div>
                 <p className="due-item-title">
-                  <button
-                    className="due-item-open-detail"
-                    type="button"
-                    aria-label={`${reminder.title}. ${reminder.kind === "one_time" && reminder.scheduled_for ? clock(reminder.scheduled_for, locale) : `${t("Every")} ${Math.round((reminder.interval_minutes ?? 0) / 60)} ${t("hours after activity")}`}`}
-                    onClick={() => onSelect(reminder)}
-                  >
-                    {reminder.title}
-                  </button>
+                  {t(activity.name)}
                 </p>
-                <p>
-                  {reminder.kind === "one_time" && reminder.scheduled_for
-                    ? clock(reminder.scheduled_for, locale)
-                    : `${t("Every")} ${Math.round((reminder.interval_minutes ?? 0) / 60)} ${t("hours after activity")}`}
-                </p>
+                <p>{description}</p>
               </div>
               <span className="due-actions">
-                {reminder.kind === "interval" && onLogActivity && reminder.activity_id && (
+                {schedule.kind === "interval" && onLogActivity && (
                   <button
                     className="due-log"
-                    aria-label={`${t("Log care")} ${reminder.title}`}
-                    title={`${t("Log care")} ${reminder.title}`}
-                    onClick={() => onLogActivity(reminder.activity_id!)}
+                    aria-label={`${t("Log care")} ${t(activity.name)}`}
+                    title={`${t("Log care")} ${t(activity.name)}`}
+                    onClick={() => onLogActivity(activity.id)}
                   >
                     <ClipboardPlus size={14} />
                   </button>
                 )}
-                {reminder.kind === "one_time" && (
+                {schedule.kind === "one_time" && (
                   <button
                     className="check"
-                    aria-label={`${t("Mark complete")} ${reminder.title}`}
-                    title={`${t("Mark complete")} ${reminder.title}`}
+                    aria-label={`${t("Mark complete")} ${t(activity.name)}`}
+                    title={`${t("Mark complete")} ${t(activity.name)}`}
                     data-tooltip={t("Mark complete")}
-                    onClick={() => onComplete(reminder)}
+                    onClick={() => onComplete(activity)}
                   >
                     <Check size={13} />
                   </button>
@@ -2111,16 +1991,17 @@ function UpcomingList({
                 {canManage && (
                   <button
                     className="more"
-                    aria-label={`${t("Delete")} ${reminder.title}`}
-                    title={`${t("Delete")} ${reminder.title}`}
-                    onClick={() => onDelete(reminder)}
+                    aria-label={`${t("Delete")} ${t(activity.name)}`}
+                    title={`${t("Delete")} ${t(activity.name)}`}
+                    onClick={() => onDelete(activity)}
                   >
                     <Trash2 size={14} />
                   </button>
                 )}
               </span>
             </article>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <p className="upcoming-empty">
@@ -2141,6 +2022,7 @@ function LogModal({
   note,
   createdBy,
   editable,
+  fixedActivity,
   editing,
   onClose,
   onActivity,
@@ -2159,6 +2041,7 @@ function LogModal({
   note: string;
   createdBy?: string;
   editable: boolean;
+  fixedActivity: boolean;
   editing: boolean;
   onClose: () => void;
   onActivity: (id: string) => void;
@@ -2183,12 +2066,14 @@ function LogModal({
           </div>
         )}
         <div className="activity-picker">
-          {activities.map((item) => (
+          {activities
+            .filter((item) => !fixedActivity || item.id === activity?.id)
+            .map((item) => (
             <button
               type="button"
               key={item.id}
               className={item.id === activity?.id ? "selected" : ""}
-              disabled={!editable}
+              disabled={!editable || fixedActivity}
               onClick={() => onActivity(item.id)}
             >
               <i
@@ -2704,17 +2589,11 @@ function ChildrenHome({
 function ManageModal({
   locale,
   panel,
-  activities,
   children,
   notes,
   inviteUrl,
   canManage,
   onClose,
-  onActivity,
-  onUpdateActivity,
-  onArchive,
-  onField,
-  onReminder,
   onInvite,
   onNote,
   onChild,
@@ -2722,17 +2601,11 @@ function ManageModal({
 }: {
   locale: User["locale"];
   panel: Panel;
-  activities: Activity[];
   children: Child[];
   notes: Note[];
   inviteUrl: string;
   canManage: boolean;
   onClose: () => void;
-  onActivity: (event: FormEvent<HTMLFormElement>) => void;
-  onUpdateActivity: (event: FormEvent<HTMLFormElement>) => void;
-  onArchive: (id: string) => void;
-  onField: (event: FormEvent<HTMLFormElement>) => void;
-  onReminder: (event: FormEvent<HTMLFormElement>) => void;
   onInvite: (event: FormEvent<HTMLFormElement>) => void;
   onNote: (event: FormEvent<HTMLFormElement>) => void;
   onChild: (event: FormEvent<HTMLFormElement>) => void;
@@ -2740,121 +2613,12 @@ function ManageModal({
 }) {
   const t = (text: string) => translate(locale, text);
   const [inviteMethod, setInviteMethod] = useState<"email" | "link">("email");
-  const fields = (
-    <>
-      <label>
-        {t("Field type")}
-        <select name="type">
-          <option value="number">{t("Number")}</option>
-          <option value="text">{t("Text")}</option>
-          <option value="boolean">{t("Yes / no")}</option>
-          <option value="select">{t("Single select")}</option>
-          <option value="duration">{t("Duration")}</option>
-        </select>
-      </label>
-      <label>
-        {t("Unit")}
-        <input name="unit" placeholder={t("e.g. ml, °C")} />
-      </label>
-      <label>
-        {t("Options for a select")}
-        <input name="options" placeholder={t("e.g. left, right")} />
-      </label>
-    </>
-  );
   return (
     <ModalBackdrop onClose={onClose}>
       <section className="log-modal manager" role="dialog" aria-modal="true" aria-label={t("Manage care") }>
         <button className="close" aria-label={t("Close")} onClick={onClose}>
           <X size={20} />
         </button>
-        {panel === "activity" && (
-          <>
-            <form onSubmit={onActivity}>
-              <h2>{t("Custom activity")}</h2>
-              <label>
-                {t("Name")}
-                <input name="name" required placeholder={t("e.g. Bath")} />
-              </label>
-              <label>
-                {t("First field (optional)")}
-                <input name="field" placeholder={t("e.g. Temperature")} />
-              </label>
-              {fields}
-              <button className="primary submit">{t("Create activity")}</button>
-            </form>
-            <form onSubmit={onField}>
-              <h3>{t("Add a field")}</h3>
-              <label>
-                {t("Activity")}
-                <select name="activityId">
-                  {activities.map((activity) => (
-                    <option key={activity.id} value={activity.id}>
-                      {t(activity.name)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                {t("Field name")}
-                <input name="field" required />
-              </label>
-              {fields}
-              <button className="text-button">{t("Add field")}</button>
-            </form>
-            {canManage && (
-              <div className="note-list">
-                {activities.map((activity) => (
-                  <article key={activity.id}>
-                    <form onSubmit={onUpdateActivity}>
-                      <input type="hidden" name="activityId" value={activity.id} />
-                      <label>
-                        {t("Name")}
-                        <input name="name" defaultValue={activity.name} required />
-                      </label>
-                      <label>
-                        {t("Color")}
-                        <input name="color" type="color" defaultValue={activity.color} />
-                      </label>
-                      <div className="modal-actions">
-                        <button className="text-button">{t("Save changes")}</button>
-                        <button
-                          className="text-button danger"
-                          type="button"
-                          onClick={() => onArchive(activity.id)}
-                        >
-                          {t("Remove activity")}
-                        </button>
-                      </div>
-                    </form>
-                  </article>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-        {panel === "reminder" && (
-          <form onSubmit={onReminder}>
-            <h2>{t("Add reminder")}</h2>
-            <label>
-              {t("Title")}
-              <input name="title" required />
-            </label>
-            <label>
-              {t("Activity")}
-              <select name="activityId">
-                <option value="">{t("None")}</option>
-                {activities.map((activity) => (
-                  <option key={activity.id} value={activity.id}>
-                    {t(activity.name)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <ReminderScheduleFields locale={locale} />
-            <button className="primary submit">{t("Save reminder")}</button>
-          </form>
-        )}
         {panel === "invite" && (
           <form onSubmit={onInvite}>
             <h2>{t("Invite caregiver")}</h2>
