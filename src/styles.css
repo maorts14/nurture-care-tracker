@@ -2385,7 +2385,7 @@ nav em {
   border-bottom: 1px solid #e5dfd5;
   font-size: 15px;
 }
-.interactive-row {
+.interactive-row:not(.interactive-row-custom) {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2394,10 +2394,6 @@ nav em {
   border-bottom: 1px solid #e5dfd5;
   border-radius: 10px;
   transition: background-color 140ms ease, box-shadow 140ms ease;
-}
-.interactive-row.interactive-row-custom.event {
-  display: grid;
-  grid-template-columns: 62px 46px 1fr auto;
 }
 .interactive-row-content {
   flex: 1 1 auto;
@@ -3661,16 +3657,10 @@ small,
 
 @media (hover: hover) and (pointer: fine) {
   .due-item:hover,
-  .interactive-row:hover {
+  .event:hover,
+  .interactive-row:not(.interactive-row-custom):hover {
     background: #fff4ef;
     box-shadow: 0 0 0 1px #f4b19d, 0 6px 18px #b6573329;
-  }
-
-  .due-item-open-detail:hover {
-    color: var(--color-primary-hover);
-    border-radius: 6px;
-    background: #fff1ec;
-    box-shadow: inset 3px 0 0 var(--color-primary);
   }
 
   .interactive-row-content:hover {
@@ -3679,6 +3669,7 @@ small,
     box-shadow: none;
   }
 
+  .due-item-open-detail:hover,
   .event-open-detail:hover {
     color: inherit;
     background: transparent;
@@ -3708,7 +3699,4 @@ small,
   .care-pauses-heading .primary { margin-top: 18px; }
   .care-pause-row { align-items: flex-start; }
   .interactive-row-actions { margin-top: 15px; }
-  .interactive-row.interactive-row-custom.event {
-    grid-template-columns: 50px 40px 1fr auto;
-  }
 }

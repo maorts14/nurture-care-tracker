@@ -309,6 +309,7 @@ export default function App() {
   usePageScrollLock(mobileSidebarOpen);
   const locale: User["locale"] = user?.locale ?? guestLocale;
   const t = (text: string) => translate(locale, text);
+  const timelineOpen = /^\/children\/[^/]+$/.test(routePath);
   const insightsOpen = /^\/children\/[^/]+\/insights$/.test(routePath);
   const caregiversOpen = /^\/children\/[^/]+\/caregivers$/.test(routePath);
   const carePausesOpen = /^\/children\/[^/]+\/care-pauses$/.test(routePath);
@@ -463,6 +464,9 @@ export default function App() {
     addEventListener("popstate", onPopState);
     return () => removeEventListener("popstate", onPopState);
   }, []);
+  useEffect(() => {
+    setMobileSidebarOpen(false);
+  }, [routePath]);
   useEffect(() => {
     if (!user) return;
     const match = routePath.match(/^\/children\/([^/]+)(?:\/(?:insights|caregivers|care-pauses))?$/);
@@ -1646,7 +1650,7 @@ export default function App() {
         </label>
         <nav onClickCapture={() => setMobileSidebarOpen(false)}>
           <button
-            className={insightsOpen ? "" : "nav-active"}
+            className={timelineOpen ? "nav-active" : ""}
             onClick={() => navigate(`/children/${child.id}`)}
           >
             <Clock3 size={18} />
