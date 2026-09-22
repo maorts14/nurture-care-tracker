@@ -117,6 +117,7 @@ test("custom activities and their fields are managed by owners or care managers"
     kind: "custom",
     color: "#198f7a",
     fields: dashboard.activities.find((activity) => activity.id === activityId)!.fields,
+    schedule: null,
   });
   assert.deepEqual(
     dashboard.activities
