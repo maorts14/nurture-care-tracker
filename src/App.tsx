@@ -2087,25 +2087,27 @@ function UpcomingList({
                 </p>
               </div>
               <span className="due-actions">
-                {onLogActivity && reminder.activity_id && (
+                {reminder.kind === "interval" && onLogActivity && reminder.activity_id && (
                   <button
                     className="due-log"
-                    aria-label={`${t("Log activity")} ${reminder.title}`}
-                    title={`${t("Log activity")} ${reminder.title}`}
+                    aria-label={`${t("Log care")} ${reminder.title}`}
+                    title={`${t("Log care")} ${reminder.title}`}
                     onClick={() => onLogActivity(reminder.activity_id!)}
                   >
                     <ClipboardPlus size={14} />
                   </button>
                 )}
-                <button
-                  className="check"
-                  aria-label={`${t("Mark complete")} ${reminder.title}`}
-                  title={`${t("Mark complete")} ${reminder.title}`}
-                  data-tooltip={t("Mark complete")}
-                  onClick={() => onComplete(reminder)}
-                >
-                  <Check size={13} />
-                </button>
+                {reminder.kind === "one_time" && (
+                  <button
+                    className="check"
+                    aria-label={`${t("Mark complete")} ${reminder.title}`}
+                    title={`${t("Mark complete")} ${reminder.title}`}
+                    data-tooltip={t("Mark complete")}
+                    onClick={() => onComplete(reminder)}
+                  >
+                    <Check size={13} />
+                  </button>
+                )}
                 {canManage && (
                   <button
                     className="more"

@@ -21,3 +21,12 @@ test("a caregiver creates an interval reminder and sees it in upcoming care", as
   await expect(page.getByText("Vitamin reminder")).toBeVisible();
   await expect(page.getByText("Every 8 hours after activity")).toBeVisible();
 });
+
+test("recurring reminders log care while one-time reminders can be completed", async ({ page }) => {
+  await signInAsAlex(page);
+
+  await expect(page.getByRole("button", { name: "Log care Feeding window" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Mark complete Feeding window" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Mark complete Doctor appointment" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Log care Doctor appointment" })).toHaveCount(0);
+});

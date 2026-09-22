@@ -285,23 +285,25 @@ export function AnalyticsView({
                   {stat.history.length ? (
                     stat.history.map((day) => (
                       <section className="analytics-history-day" key={day.date}>
+                        <div className="analytics-history-day-date">
                           <time dateTime={day.date}>
-                          <span>
-                            {weekdayFormatter.format(
-                              new Date(`${day.date}T12:00:00`),
-                            )}
-                          </span>
-                          <span>
-                            {calendarDateFormatter.format(
-                              new Date(`${day.date}T12:00:00`),
-                            )}
-                          </span>
+                            <span>
+                              {weekdayFormatter.format(
+                                new Date(`${day.date}T12:00:00`),
+                              )}
+                            </span>
+                            <span>
+                              {calendarDateFormatter.format(
+                                new Date(`${day.date}T12:00:00`),
+                              )}
+                            </span>
                           </time>
                           {day.excluded_from_average && (
                             <small className="analytics-excluded-day">
                               {t("Excluded from average")}
                             </small>
                           )}
+                        </div>
                         <MetricsGrid
                           metrics={day}
                           feeding={feeding}

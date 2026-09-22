@@ -1423,7 +1423,7 @@ app.post("/api/reminders/:reminderId/complete", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
   const result = await pool.query(
-    "UPDATE reminder SET completed_at = now() WHERE id = $1 AND child_id IN (SELECT child_id FROM child_membership WHERE user_id = $2) RETURNING child_id",
+    "UPDATE reminder SET completed_at = now() WHERE id = $1 AND kind = 'one_time' AND completed_at IS NULL AND child_id IN (SELECT child_id FROM child_membership WHERE user_id = $2) RETURNING child_id",
     [request.params.reminderId, session.userId],
   );
   if (result.rowCount !== 1) {

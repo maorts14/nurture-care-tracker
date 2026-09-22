@@ -141,6 +141,11 @@ test("reminders, notes, and exports keep their intended access and data shape", 
   assert.equal(reminderResponse.status, 201);
   const reminder = (await reminderResponse.json()) as { id: string };
   assert.equal(
+    (await owner.request(`/api/reminders/${reminder.id}/complete`, { method: "POST" })).status,
+    404,
+    "recurring reminders cannot be completed",
+  );
+  assert.equal(
     (await owner.request(`/api/reminders/${reminder.id}`, {
       method: "PUT",
       body: JSON.stringify({

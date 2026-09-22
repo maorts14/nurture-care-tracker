@@ -13,7 +13,7 @@ test.beforeEach(async () => resetTestDatabase());
 
 test("caregiver creates a multi-portion feeding, opens its editor, and adds a comment", async ({ page }) => {
   await signInAsAlex(page);
-  await page.getByRole("button", { name: "Log care" }).click();
+  await page.getByRole("button", { name: "Log care", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "What happened?" });
   await dialog.getByRole("button", { name: "Feeding", exact: true }).click();
   await dialog.getByLabel("Amount in ml").fill("65");
