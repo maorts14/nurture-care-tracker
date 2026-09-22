@@ -4,17 +4,15 @@ All automated tests use a dedicated `feedme_test` PostgreSQL database. The reset
 
 ## Local setup
 
-Start the disposable database once:
+Run everything with one command:
 
 ```bash
-docker compose -p feedme-tests -f docker-compose.test.yml up -d
+npm run test:local
 ```
 
-Install Playwright Chromium once after dependencies are installed:
+It starts the disposable database, ensures Chromium is available, runs both suites, then removes the test container, network, and volume even if a test fails.
 
-```bash
-npx playwright install chromium
-```
+The test stack does not interfere with the development stack: PostgreSQL uses port `5433` (development uses `5432`), the test API uses `3002` (development uses `3001`), and the Playwright web server uses `5174` (development uses `5173`).
 
 ## Commands
 

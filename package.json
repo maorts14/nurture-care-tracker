@@ -12,7 +12,8 @@
     "test:db:reset": "tsx tests/support/resetTestDatabase.ts --seed",
     "test:api": "npm run test:db:reset && node --test --import tsx --test-concurrency=1 tests/api/*.test.ts",
     "test:e2e": "playwright test",
-    "test": "npm run test:api && npm run test:e2e"
+    "test": "npm run test:api && npm run test:e2e",
+    "test:local": "tsx tests/support/runLocalTests.ts"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

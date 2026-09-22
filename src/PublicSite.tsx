@@ -30,24 +30,29 @@ const pageByPath: Record<Exclude<PublicPage, "landing">, { eyebrow?: string; tit
     ],
   },
   privacy: {
-    title: "Privacy, in plain language.",
-    intro: "This page explains the principles that guide how Feedme handles family-care information. The final legal policy will be reviewed before public launch.",
+    title: "Privacy",
+    intro: "We take practical steps to protect your family’s information and explain clearly how we use it.",
     sections: [
-      ["The short version", "Care information belongs to the families who add it. Feedme should use only what is needed to provide the shared-care service."],
-      ["What the service uses", "Account details, child profiles, care events, notes, reminders and service-security information are used to operate the family space."],
-      ["Your choices", "The product will provide a clear path to view policy information, export data, manage preferences and request account deletion."],
-      ["Sensitive information", "Custom activities can contain sensitive details. Feedme will explain the applicable protections and retention rules in the final policy."],
-      ["Cookies and similar technology", "Feedme uses a small number of essential session and security cookies to keep a signed-in family space available and protected. Optional measurement or marketing technology will not run until a user has made a choice where consent is required. Signed-in users will be able to manage those preferences in Privacy & data."],
-      ["Security", "Secure sign-in, role-based access, encrypted HTTPS connections and operational safeguards help protect family information. The launch work also includes encrypted backup, recovery and deletion procedures. Use the contact page to report a security concern."],
+      ["What we keep", "We keep the details your family provides: email and display name for accounts; a child’s name, time zone, and optional birth date; plus care records, notes, reminders, and custom fields. We do not ask for government, health, or other official ID numbers. Internal IDs only connect records inside Feedme. Custom fields may contain sensitive information, so only add what your family needs."],
+      ["Who can see it", "The people you add to a child space can see the information shared in that space. Their role determines whether they can only view it, add records, or manage care settings."],
+      ["Why we use it", "We use this information to sign you in, show the shared timeline, run reminders and insights, and keep the service secure. We do not sell care information, show ads, or use tracking analytics."],
+      ["Your controls", "In Privacy & data, you can download a copy of your account data or permanently delete your account. Deleting an account removes its profile, notes, comments, and invitations. Shared care records remain without your identity; a child space you own alone is deleted."],
+      ["Storage and backups", "Data is stored in a private database on our server. We keep daily recovery copies for 14 days. Deleted information may remain in a recovery copy until that copy expires. These backups are protected by server access controls, but are not yet encrypted separately."],
+      ["Cookies and security", "Feedme uses one essential, signed-in session cookie. It is not used for advertising or tracking. Connections use HTTPS, passwords are stored as hashes, and the database is not directly public on the internet."],
     ],
   },
   terms: {
-    title: "Terms and safety.",
-    intro: "Feedme is a coordination tool for family care. These terms are a readable product outline until the final terms receive legal review.",
+    title: "Terms of use",
+    intro: "A few simple rules for using Feedme and sharing a child’s care information.",
     sections: [
-      ["Using Feedme", "Account holders are responsible for the people they invite and the information they add to a shared child space."],
-      ["Care, not clinical advice", "Feedme records information and reminders. It does not diagnose, prescribe, or replace a clinician or emergency service."],
-      ["Shared access", "Family-space roles control who can view, write, manage care and change ownership-related settings."],
+      ["Using Feedme", "Only add or share child information you are allowed to manage, and keep your account secure."],
+      ["Sharing a care space", "You choose who joins a child space. Anyone you invite may see the information shared there, according to their role. Invite only people you trust with that information."],
+      ["Use it responsibly", "Do not use Feedme to harm others, interfere with the service, or add information about someone without permission. We may limit access when needed to protect the service or its users."],
+      ["Care, not medical advice", "Feedme helps you record care and remember routines. It does not diagnose, prescribe, or replace a clinician, emergency service, or your own judgment."],
+      ["Your content and data", "You keep responsibility for the care information you add. Feedme does not ask for government, health, or other official ID numbers; account and child details come from what your family provides. You allow Feedme to store and show care information to the people in the relevant care space so the service can work. The Privacy page explains how to export or delete account data."],
+      ["Changes and availability", "We may update, pause, or remove features as Feedme changes. If we make an important change to these terms, we will update this page."],
+      ["Law and disputes", "These terms are governed by Israeli law. If a problem comes up, contact Feedme first. If we cannot resolve it together, it will be handled by the competent courts in Israel."],
+      ["Questions", "If something is unclear, contact Feedme through the Contact page before using the service."],
     ],
   },
   accessibility: {
@@ -83,24 +88,29 @@ const hebrewPageByPath: typeof pageByPath = {
     ],
   },
   privacy: {
-    title: "פרטיות, בשפה פשוטה.",
-    intro: "דף זה מסביר את העקרונות שמנחים את Feedme בטיפול במידע על טיפול משפחתי. המדיניות המשפטית הסופית תעבור בדיקה לפני ההשקה לציבור.",
+    title: "פרטיות",
+    intro: "אנחנו נוקטים צעדים מעשיים כדי להגן על המידע המשפחתי שלכם ומסבירים בצורה ברורה איך אנחנו משתמשים בו.",
     sections: [
-      ["בקצרה", "מידע הטיפול שייך למשפחות שמוסיפות אותו. Feedme אמורה להשתמש רק במה שנדרש כדי לספק את שירות הטיפול המשותף."],
-      ["באיזה מידע השירות משתמש", "פרטי חשבון, פרופילי ילדים, אירועי טיפול, הערות, תזכורות ומידע לצורכי אבטחת השירות משמשים להפעלת מרחב המשפחה."],
-      ["הבחירות שלכם", "המוצר יספק דרך ברורה לקריאת המדיניות, ייצוא מידע, ניהול העדפות ובקשת מחיקת חשבון."],
-      ["מידע רגיש", "פעילויות מותאמות אישית עשויות לכלול פרטים רגישים. Feedme תסביר את ההגנות וכללי השמירה הרלוונטיים במדיניות הסופית."],
-      ["עוגיות וטכנולוגיות דומות", "Feedme משתמשת במספר קטן של עוגיות הפעלה ואבטחה חיוניות כדי לשמור על מרחב המשפחה המחובר זמין ומוגן. כלי מדידה או שיווק אופציונליים לא יופעלו לפני שהמשתמש בחר בכך, במקומות שבהם נדרשת הסכמה. משתמשים מחוברים יוכלו לנהל את ההעדפות האלה בפרטיות ונתונים."],
-      ["אבטחה", "התחברות מאובטחת, גישה מבוססת תפקידים, חיבורי HTTPS מוצפנים והגנות תפעוליות עוזרים להגן על מידע משפחתי. עבודת ההשקה כוללת גם הליכי גיבוי, שחזור ומחיקה מוצפנים. אפשר להשתמש בדף יצירת הקשר כדי לדווח על נושא אבטחה."],
+      ["מה אנחנו שומרים", "אנחנו שומרים את הפרטים שהמשפחה מוסיפה: אימייל ושם תצוגה לחשבון; שם הילד, אזור הזמן ותאריך לידה אופציונלי; וגם רשומות טיפול, הערות, תזכורות ושדות מותאמים אישית. אנחנו לא מבקשים מספר תעודת זהות, מספר קופת חולים או מזהה רשמי אחר. מזהים פנימיים משמשים רק לקישור הרשומות בתוך Feedme. שדות מותאמים עשויים להכיל מידע רגיש, לכן כדאי להוסיף רק מה שהמשפחה צריכה."],
+      ["מי יכול לראות", "האנשים שאתם מוסיפים למרחב ילד יכולים לראות את המידע שמשותף בו. התפקיד שלהם קובע אם הם יכולים רק לצפות, להוסיף רשומות או לנהל הגדרות טיפול."],
+      ["למה אנחנו משתמשים במידע", "המידע משמש להתחברות, להצגת ציר הזמן המשותף, להפעלת תזכורות ותובנות ולשמירה על אבטחת השירות. אנחנו לא מוכרים מידע על טיפול, לא מציגים פרסומות ולא משתמשים בכלי מעקב אנליטיים."],
+      ["השליטה שלכם", "באזור פרטיות ונתונים אפשר להוריד עותק של נתוני החשבון או למחוק את החשבון לצמיתות. מחיקת חשבון מסירה את הפרופיל, ההערות, התגובות וההזמנות שלו. רשומות טיפול משותפות נשארות בלי הזהות שלכם; מרחב ילד שבבעלותכם בלבד נמחק."],
+      ["אחסון וגיבויים", "המידע נשמר במסד נתונים פרטי בשרת שלנו. אנחנו שומרים עותקי שחזור יומיים ל-14 ימים. מידע שנמחק עשוי להישאר בעותק שחזור עד שתוקפו יפוג. הגיבויים מוגנים באמצעות בקרות גישה לשרת, אך עדיין אינם מוצפנים בנפרד."],
+      ["עוגיות ואבטחה", "Feedme משתמשת בעוגיית התחברות חיונית אחת. היא לא משמשת לפרסום או למעקב. החיבור מוצפן ב-HTTPS, סיסמאות נשמרות בצורה מוצפנת ומסד הנתונים אינו פתוח ישירות לאינטרנט."],
     ],
   },
   terms: {
-    title: "תנאים ובטיחות.",
-    intro: "Feedme היא כלי לתיאום טיפול משפחתי. תנאים אלה הם תיאור מוצר קריא עד שהנוסח הסופי יעבור בדיקה משפטית.",
+    title: "תנאי שימוש",
+    intro: "כמה כללים פשוטים לשימוש ב-Feedme ולשיתוף מידע על הטיפול בילד.",
     sections: [
-      ["שימוש ב-Feedme", "בעלי חשבון אחראים לאנשים שהם מזמינים ולמידע שהם מוסיפים למרחב ילד משותף."],
-      ["טיפול, לא ייעוץ רפואי", "Feedme מתעדת מידע ותזכורות. היא אינה מאבחנת, רושמת טיפול או מחליפה רופא או שירות חירום."],
-      ["גישה משותפת", "תפקידים במרחב המשפחה קובעים מי יכול לצפות, לתעד, לנהל טיפול ולשנות הגדרות הקשורות לבעלות."],
+      ["שימוש ב-Feedme", "הוסיפו או שתפו מידע על ילד רק אם אתם מורשים לנהל אותו, ושמרו על אבטחת החשבון שלכם."],
+      ["שיתוף מרחב טיפול", "אתם בוחרים מי מצטרף למרחב ילד. כל מי שאתם מזמינים יכול לראות את המידע שמשותף בו, בהתאם לתפקיד שלו. הזמינו רק אנשים שאתם סומכים עליהם עם המידע הזה."],
+      ["שימוש אחראי", "אין להשתמש ב-Feedme כדי לפגוע באחרים, להפריע לשירות או להוסיף מידע על אדם ללא רשות. אנחנו עשויים להגביל גישה כשצריך כדי להגן על השירות או על המשתמשים בו."],
+      ["טיפול, לא ייעוץ רפואי", "Feedme עוזרת לתעד טיפול ולזכור שגרה. היא אינה מאבחנת, רושמת טיפול או מחליפה רופא, שירות חירום או שיקול דעת אישי."],
+      ["התוכן והמידע שלכם", "אתם נשארים אחראים למידע הטיפולי שאתם מוסיפים. Feedme לא מבקשת מספר תעודת זהות, מספר קופת חולים או מזהה רשמי אחר; פרטי החשבון והילד מגיעים ממה שהמשפחה מוסיפה. אתם מאפשרים ל-Feedme לשמור ולהציג מידע טיפולי לאנשים במרחב הטיפול הרלוונטי כדי שהשירות יעבוד. בדף הפרטיות מוסבר איך לייצא או למחוק נתוני חשבון."],
+      ["שינויים וזמינות", "אנחנו עשויים לעדכן, להשהות או להסיר יכולות כשהשירות משתנה. אם נעשה שינוי חשוב בתנאים, נעדכן את העמוד הזה."],
+      ["דין ומחלוקות", "תנאים אלה כפופים לדיני מדינת ישראל. אם עולה בעיה, פנו קודם ל-Feedme. אם לא נצליח לפתור אותה יחד, היא תתברר בבתי המשפט המוסמכים בישראל."],
+      ["שאלות", "אם משהו אינו ברור, אפשר לפנות ל-Feedme דרך דף יצירת הקשר לפני השימוש בשירות."],
     ],
   },
   accessibility: {
@@ -283,6 +293,7 @@ function Landing({ locale, onNavigate, onSignIn }: Pick<PublicSiteProps, "locale
 
 function LegalPage({ page, locale }: Pick<PublicSiteProps, "page" | "locale">) {
   const content = (locale === "he" ? hebrewPageByPath : pageByPath)[page as Exclude<PublicPage, "landing">];
+  const isPrivacy = page === "privacy";
   if (page === "about") return <AboutPage locale={locale} />;
   if (page === "contact") return <ContactPage content={content} locale={locale} />;
   if (page === "accessibility") return <AccessibilityPage locale={locale} />;
@@ -290,7 +301,7 @@ function LegalPage({ page, locale }: Pick<PublicSiteProps, "page" | "locale">) {
     <section className="legal-hero">{content.eyebrow && <p className="marketing-eyebrow">{content.eyebrow}</p>}<h1>{content.title}</h1><p>{content.intro}</p></section>
     <div className="legal-content">
       <aside><strong>{locale === "he" ? "בדף הזה" : "ON THIS PAGE"}</strong>{content.sections.map(([heading]) => <a key={heading} href={`#${heading.toLowerCase().replaceAll(" ", "-")}`}>{heading}</a>)}</aside>
-      <article>{content.sections.map(([heading, body]) => <section id={heading.toLowerCase().replaceAll(" ", "-")} key={heading}><h2>{heading}</h2><p>{body}</p></section>)}<div className="legal-callout"><ShieldCheck size={20} /><p>{locale === "he" ? "לפני ההשקה, מדיניות סופית, פרטי קשר ותאריכי תחילה יחליפו את טיוטות הדפים הציבוריים המוכנות האלה." : "Before launch, final policies, contact details and effective dates will replace these prepared public-page drafts."}</p></div></article>
+      <article>{content.sections.map(([heading, body]) => <section id={heading.toLowerCase().replaceAll(" ", "-")} key={heading}><h2>{heading}</h2><p>{body}</p></section>)}{isPrivacy && <div className="legal-callout"><ShieldCheck size={20} /><p>{locale === "he" ? <>שאלות על פרטיות או על הנתונים שלכם? אפשר לפנות אלינו ב־<a href="mailto:maorts14@gmail.com">maorts14@gmail.com</a>.</> : <>Questions about privacy or your data? Contact us at <a href="mailto:maorts14@gmail.com">maorts14@gmail.com</a>.</>}</p></div>}</article>
     </div>
   </>;
 }
