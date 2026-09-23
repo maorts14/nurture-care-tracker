@@ -89,12 +89,14 @@ type Event = {
 type FeedingPortion = {
   kind: "breast_milk" | "formula";
   delivery_method: "bottle" | "breastfeeding";
-  amount_ml: number;
+  amount_ml: number | null;
+  duration_minutes: number | null;
 };
 type FeedingPortionDraft = {
   kind: FeedingPortion["kind"];
   deliveryMethod: FeedingPortion["delivery_method"];
   amountMl: string;
+  durationMinutes: string;
 };
 type ActivityAnalytics = {
   activity_id: string;
@@ -106,8 +108,12 @@ type ActivityAnalytics = {
 type ActivityMetrics = {
   count: number;
   portion_count: number;
+  bottle_portion_count: number;
+  breastfeeding_portion_count: number;
   total_amount_ml: number;
+  total_breastfeeding_minutes: number;
   average_amount_ml: number | null;
+  average_breastfeeding_minutes: number | null;
 };
 type Dashboard = {
   role: "owner" | "care_manager" | "caregiver" | "viewer";
@@ -226,7 +232,7 @@ function eventDetail(
     return event.feeding_portions
       .map(
         (portion) =>
-          `${t(portion.kind === "breast_milk" ? "Breast milk" : "Formula")} · ${t(portion.delivery_method === "bottle" ? "Bottle" : "Breastfeeding")}: ${portion.amount_ml} ${t("ml")}`,
+          `${t(portion.kind === "breast_milk" ? "Breast milk" : "Formula")} · ${t(portion.delivery_method === "bottle" ? "Bottle" : "Breastfeeding")}: ${portion.delivery_method === "breastfeeding" ? `${portion.duration_minutes} ${t("minutes")}` : `${portion.amount_ml} ${t("ml")}`}`,
       )
       .join(" · ");
   const activity = activities.find((item) => item.id === event.activity_id);
@@ -287,7 +293,7 @@ export default function App() {
   const [activityId, setActivityId] = useState("");
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [feedingPortions, setFeedingPortions] = useState<FeedingPortionDraft[]>(
-    [{ kind: "breast_milk", deliveryMethod: "bottle", amountMl: "" }],
+    [{ kind: "breast_milk", deliveryMethod: "bottle", amountMl: "", durationMinutes: "" }],
   );
   const [note, setNote] = useState("");
   const [at, setAt] = useState(localDateTime());
@@ -575,7 +581,8 @@ export default function App() {
         editingLog.feeding_portions.map((portion) => ({
           kind: portion.kind,
           deliveryMethod: portion.delivery_method,
-          amountMl: String(portion.amount_ml),
+          amountMl: portion.amount_ml === null ? "" : String(portion.amount_ml),
+          durationMinutes: portion.duration_minutes === null ? "" : String(portion.duration_minutes),
         })),
       );
       return;
@@ -725,6 +732,7 @@ export default function App() {
       kind: portion.kind,
       deliveryMethod: portion.deliveryMethod,
       amountMl: Number(portion.amountMl),
+      durationMinutes: Number(portion.durationMinutes),
     }));
     await api(editingLog ? `/api/logs/${editingLog.id}` : `/api/children/${child.id}/logs`, {
       method: editingLog ? "PUT" : "POST",
@@ -741,7 +749,7 @@ export default function App() {
     });
     setNote("");
     setFeedingPortions([
-      { kind: "breast_milk", deliveryMethod: "bottle", amountMl: "" },
+      { kind: "breast_milk", deliveryMethod: "bottle", amountMl: "", durationMinutes: "" },
     ]);
     setEditingLog(null);
     setCompletingScheduleActivityId(null);
@@ -845,7 +853,7 @@ export default function App() {
     setAt(localDateTime());
     setNote("");
     setFeedingPortions([
-      { kind: "breast_milk", deliveryMethod: "bottle", amountMl: "" },
+      { kind: "breast_milk", deliveryMethod: "bottle", amountMl: "", durationMinutes: "" },
     ]);
     setEditingLog(null);
     setCompletingScheduleActivityId(activity.id);
@@ -1341,6 +1349,7 @@ export default function App() {
                       kind: "breast_milk",
                       deliveryMethod: "bottle",
                       amountMl: "",
+                      durationMinutes: "",
                     },
                   ]);
                   setEditingLog(null);
@@ -1364,7 +1373,7 @@ export default function App() {
             setActivityId(id);
             setAt(localDateTime());
             setFeedingPortions([
-              { kind: "breast_milk", deliveryMethod: "bottle", amountMl: "" },
+              { kind: "breast_milk", deliveryMethod: "bottle", amountMl: "", durationMinutes: "" },
             ]);
             setEditingLog(null);
             setCompletingScheduleActivityId(null);
@@ -1473,7 +1482,7 @@ export default function App() {
                 const feedingTotal =
                   event.kind === "feeding"
                     ? event.feeding_portions.reduce(
-                        (total, portion) => total + portion.amount_ml,
+                        (total, portion) => total + (portion.amount_ml ?? 0),
                         0,
                       )
                     : null;
@@ -1609,30 +1618,36 @@ export default function App() {
             ))}
           </select>
         </label>
-        <nav onClickCapture={() => setMobileSidebarOpen(false)}>
+        <nav>
           <button
             className={timelineOpen ? "nav-active" : ""}
-            onClick={() => navigate(`/children/${child.id}`)}
+            onClick={() => {
+              setMobileSidebarOpen(false);
+              navigate(`/children/${child.id}`);
+            }}
           >
             <Clock3 size={18} />
             {t("Timeline")}
           </button>
           <button
             className={insightsOpen ? "nav-active" : ""}
-            onClick={() => navigate(`/children/${child.id}/insights`)}
+            onClick={() => {
+              setMobileSidebarOpen(false);
+              navigate(`/children/${child.id}/insights`);
+            }}
           >
             <Sparkles size={18} />
             {t("Insights")}
           </button>
         </nav>
-        <div
-          className="sidebar-bottom"
-          onClickCapture={() => setMobileSidebarOpen(false)}
-        >
+        <div className="sidebar-bottom">
           {canManage && (
             <button
               className={activitiesRemindersOpen ? "nav-active" : ""}
-              onClick={() => navigate(`/children/${child.id}/activities-reminders`)}
+              onClick={() => {
+                setMobileSidebarOpen(false);
+                navigate(`/children/${child.id}/activities-reminders`);
+              }}
             >
               <Settings2 size={18} />
               {t("Activities & reminders")}
@@ -1640,38 +1655,59 @@ export default function App() {
           )}
           <button
             className={carePausesOpen ? "nav-active" : ""}
-            onClick={() => navigate(`/children/${child.id}/care-pauses`)}
+            onClick={() => {
+              setMobileSidebarOpen(false);
+              navigate(`/children/${child.id}/care-pauses`);
+            }}
           >
             <HeartPulse size={18} />
             {t("Care pauses")}
           </button>
           {canManage && (
-            <button onClick={() => setPanel("invite")}>
+            <button onClick={() => {
+              setMobileSidebarOpen(false);
+              setPanel("invite");
+            }}>
               <Users size={18} />
               {t("Invite caregiver")}
             </button>
           )}
           <button
             className={caregiversOpen ? "nav-active" : ""}
-            onClick={() => navigate(`/children/${child.id}/caregivers`)}
+            onClick={() => {
+              setMobileSidebarOpen(false);
+              navigate(`/children/${child.id}/caregivers`);
+            }}
           >
             <Users size={18} />
             {t("Caregivers")}
           </button>
-          <button onClick={() => navigate("/children")}>
+          <button onClick={() => {
+            setMobileSidebarOpen(false);
+            navigate("/children");
+          }}>
             <Users size={18} />
             {t("Children")}
           </button>
-          <button onClick={() => setHelpLegalOpen(true)}>
+          <button onClick={() => {
+            setMobileSidebarOpen(false);
+            setHelpLegalOpen(true);
+          }}>
             <CircleHelp size={18} />
             {t("Help & legal")}
           </button>
           <LanguageControl
             locale={user.locale}
             label={t("Language")}
-            onClick={() => setLanguageOpen(true)}
+            onClick={() => {
+              setMobileSidebarOpen(false);
+              setLanguageOpen(true);
+            }}
           />
-          <button className="leave-space" onClick={openLeave}>
+          <button className="leave-space" onClick={() => {
+            setMobileSidebarOpen(false);
+            openLeave();
+          }}>
             <UserMinus size={18} />
             {t("Leave care space")}
           </button>
@@ -2117,7 +2153,7 @@ function LogModal({
                 <select
                   aria-label={t("Milk type")}
                   value={portion.kind}
-                  disabled={!editable}
+                  disabled={!editable || portion.deliveryMethod === "breastfeeding"}
                   onChange={(event) =>
                     onPortions(
                       portions.map((item, itemIndex) =>
@@ -2144,9 +2180,9 @@ function LogModal({
                       portions.map((item, itemIndex) =>
                         itemIndex === index
                           ? {
-                              ...item,
-                              deliveryMethod: event.target
-                                .value as FeedingPortion["delivery_method"],
+                                ...item,
+                                deliveryMethod: event.target.value as FeedingPortion["delivery_method"],
+                                kind: event.target.value === "breastfeeding" ? "breast_milk" : item.kind,
                             }
                           : item,
                       ),
@@ -2157,25 +2193,29 @@ function LogModal({
                   <option value="breastfeeding">{t("Breastfeeding")}</option>
                 </select>
                 <label>
-                  <span className="sr-only">{t("Amount in ml")}</span>
+                  <span className="sr-only">
+                    {portion.deliveryMethod === "breastfeeding" ? t("Duration in minutes") : t("Amount in ml")}
+                  </span>
                   <input
                     type="number"
-                    min="0.1"
-                    step="0.1"
+                    min={portion.deliveryMethod === "breastfeeding" ? "1" : "0.1"}
+                    step={portion.deliveryMethod === "breastfeeding" ? "1" : "0.1"}
                     required
-                    value={portion.amountMl}
+                    value={portion.deliveryMethod === "breastfeeding" ? portion.durationMinutes : portion.amountMl}
                     disabled={!editable}
                     onChange={(event) =>
                       onPortions(
                         portions.map((item, itemIndex) =>
                           itemIndex === index
-                            ? { ...item, amountMl: event.target.value }
+                            ? portion.deliveryMethod === "breastfeeding"
+                              ? { ...item, durationMinutes: event.target.value }
+                              : { ...item, amountMl: event.target.value }
                             : item,
                         ),
                       )
                     }
                   />
-                  <span className="field-unit">ml</span>
+                  <span className="field-unit">{portion.deliveryMethod === "breastfeeding" ? t("min") : t("ml")}</span>
                 </label>
                 {portions.length > 1 && (
                   <button
@@ -2201,7 +2241,7 @@ function LogModal({
               onClick={() =>
                 onPortions([
                   ...portions,
-                  { kind: "formula", deliveryMethod: "bottle", amountMl: "" },
+                  { kind: "formula", deliveryMethod: "bottle", amountMl: "", durationMinutes: "" },
                 ])
               }
             >

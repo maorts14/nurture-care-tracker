@@ -122,9 +122,14 @@ CREATE TABLE feeding_portion (
   log_id UUID NOT NULL REFERENCES activity_log(id) ON DELETE CASCADE,
   kind TEXT NOT NULL CHECK (kind IN ('breast_milk', 'formula')),
   delivery_method TEXT NOT NULL CHECK (delivery_method IN ('bottle', 'breastfeeding')),
-  amount_ml NUMERIC NOT NULL CHECK (amount_ml > 0),
+  amount_ml NUMERIC,
+  duration_minutes NUMERIC,
   position SMALLINT NOT NULL CHECK (position >= 0),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (
+    (delivery_method = 'bottle' AND amount_ml > 0 AND duration_minutes IS NULL)
+    OR (delivery_method = 'breastfeeding' AND kind = 'breast_milk' AND amount_ml IS NULL AND duration_minutes > 0)
+  ),
   UNIQUE (log_id, position)
 );
 CREATE INDEX feeding_portion_log_idx ON feeding_portion (log_id, position);

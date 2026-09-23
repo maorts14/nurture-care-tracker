@@ -1,5 +1,5 @@
 import { ChevronDown, LogOut, Settings } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type SidebarAccountProps = {
   displayName: string;
@@ -17,11 +17,23 @@ export function SidebarAccount({
   signOutLabel,
 }: SidebarAccountProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const accountRef = useRef<HTMLDivElement>(null);
 
   const closeMenu = () => setIsOpen(false);
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const closeOnOutsidePointerDown = (event: PointerEvent) => {
+      if (!accountRef.current?.contains(event.target as Node)) closeMenu();
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+  }, [isOpen]);
+
   return (
-    <div className="user sidebar-account">
+    <div ref={accountRef} className="user sidebar-account">
       <button
         className="sidebar-account-trigger"
         onClick={() => setIsOpen((open) => !open)}

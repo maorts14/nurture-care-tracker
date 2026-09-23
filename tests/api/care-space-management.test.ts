@@ -408,5 +408,7 @@ test("activity schedules, notes, and exports keep their intended access and data
   );
   assert.equal(report.status, 200);
   assert.match(report.headers.get("content-type") ?? "", /text\/html/);
-  assert.match(await report.text(), /Care patterns/);
+  const reportText = await report.text();
+  assert.match(reportText, /Care patterns/);
+  assert.match(reportText, /Average breastfeeding time/);
 });

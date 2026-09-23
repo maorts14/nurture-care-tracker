@@ -144,8 +144,8 @@ test("care pause preference excludes every touched local day from averages but n
   const excludedFeeding = excludedData.analytics.find((activity) => activity.activity_id === feedingId);
   assert.equal(excludedFeeding?.average.count, 1);
   assert.deepEqual(excludedFeeding?.history, [
-    { date: "2026-09-11", count: 3, portion_count: 3, total_amount_ml: 300, average_amount_ml: 100, excluded_from_average: true },
-    { date: "2026-09-10", count: 1, portion_count: 1, total_amount_ml: 100, average_amount_ml: 100, excluded_from_average: false },
+    { date: "2026-09-11", count: 3, portion_count: 3, bottle_portion_count: 3, breastfeeding_portion_count: 0, total_amount_ml: 300, total_breastfeeding_minutes: 0, average_amount_ml: 100, average_breastfeeding_minutes: null, excluded_from_average: true },
+    { date: "2026-09-10", count: 1, portion_count: 1, bottle_portion_count: 1, breastfeeding_portion_count: 0, total_amount_ml: 100, total_breastfeeding_minutes: 0, average_amount_ml: 100, average_breastfeeding_minutes: null, excluded_from_average: false },
   ]);
 
   const included = await caregiver.request(`/api/children/${childId}/gaps/${pause.id}`, {

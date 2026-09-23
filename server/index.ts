@@ -691,7 +691,7 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
   }
   const [timeline, insightPreference, activities, fields, schedules, gaps, analyticsRows] = await Promise.all([
     pool.query(
-      `SELECT log.id, log.activity_id, log.event_time, log.event_timezone, log.field_values, log.note, log.created_at, log.created_by AS created_by_id, activity.name AS activity_name, activity.kind, activity.color, activity.icon, COALESCE(author.display_name, 'Deleted caregiver') AS created_by, COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions, comment_preview.comment_count, comment_preview.first_comment, comment_preview.first_comment_author FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id LEFT JOIN app_user AS author ON author.id = log.created_by LEFT JOIN LATERAL (SELECT COUNT(*)::int AS comment_count, (array_agg(comment.body ORDER BY comment.created_at, comment.id))[1] AS first_comment, (array_agg(comment_author.display_name ORDER BY comment.created_at, comment.id))[1] AS first_comment_author FROM log_comment AS comment JOIN app_user AS comment_author ON comment_author.id = comment.created_by WHERE comment.log_id = log.id) AS comment_preview ON true WHERE log.child_id = $1 ORDER BY log.event_time DESC LIMIT 100`,
+      `SELECT log.id, log.activity_id, log.event_time, log.event_timezone, log.field_values, log.note, log.created_at, log.created_by AS created_by_id, activity.name AS activity_name, activity.kind, activity.color, activity.icon, COALESCE(author.display_name, 'Deleted caregiver') AS created_by, COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml, 'duration_minutes', portion.duration_minutes) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions, comment_preview.comment_count, comment_preview.first_comment, comment_preview.first_comment_author FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id LEFT JOIN app_user AS author ON author.id = log.created_by LEFT JOIN LATERAL (SELECT COUNT(*)::int AS comment_count, (array_agg(comment.body ORDER BY comment.created_at, comment.id))[1] AS first_comment, (array_agg(comment_author.display_name ORDER BY comment.created_at, comment.id))[1] AS first_comment_author FROM log_comment AS comment JOIN app_user AS comment_author ON comment_author.id = comment.created_by WHERE comment.log_id = log.id) AS comment_preview ON true WHERE log.child_id = $1 ORDER BY log.event_time DESC LIMIT 100`,
       [childId],
     ),
     pool.query(
@@ -742,13 +742,20 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
            (log.event_time AT TIME ZONE child_timezone.timezone)::date AS local_date,
            log.event_time,
            portions.portion_count,
+           portions.bottle_portion_count,
+           portions.breastfeeding_portion_count,
            portions.total_amount_ml,
-           CASE WHEN portions.portion_count > 0 THEN 1 ELSE 0 END AS measured_feed_count
+           portions.total_breastfeeding_minutes,
+           CASE WHEN portions.total_amount_ml > 0 THEN 1 ELSE 0 END AS bottle_fed_count,
+           CASE WHEN portions.total_breastfeeding_minutes > 0 THEN 1 ELSE 0 END AS breast_fed_count
          FROM activity_log AS log
          CROSS JOIN child_timezone
          LEFT JOIN LATERAL (
            SELECT COUNT(*)::int AS portion_count,
-             COALESCE(SUM(portion.amount_ml), 0)::float8 AS total_amount_ml
+             COUNT(*) FILTER (WHERE portion.delivery_method = 'bottle')::int AS bottle_portion_count,
+             COUNT(*) FILTER (WHERE portion.delivery_method = 'breastfeeding')::int AS breastfeeding_portion_count,
+             COALESCE(SUM(portion.amount_ml), 0)::float8 AS total_amount_ml,
+             COALESCE(SUM(portion.duration_minutes), 0)::float8 AS total_breastfeeding_minutes
            FROM feeding_portion AS portion
            WHERE portion.log_id = log.id
          ) AS portions ON true
@@ -758,8 +765,12 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
          SELECT activity_id, local_date,
            COUNT(*)::int AS count,
            COALESCE(SUM(portion_count), 0)::int AS portion_count,
+           COALESCE(SUM(bottle_portion_count), 0)::int AS bottle_portion_count,
+           COALESCE(SUM(breastfeeding_portion_count), 0)::int AS breastfeeding_portion_count,
            COALESCE(SUM(total_amount_ml), 0)::float8 AS total_amount_ml,
-           COALESCE(SUM(measured_feed_count), 0)::int AS measured_feed_count
+           COALESCE(SUM(total_breastfeeding_minutes), 0)::float8 AS total_breastfeeding_minutes,
+           COALESCE(SUM(bottle_fed_count), 0)::int AS bottle_fed_count,
+           COALESCE(SUM(breast_fed_count), 0)::int AS breast_fed_count
          FROM log_metrics
          GROUP BY activity_id, local_date
        ),
@@ -782,8 +793,12 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
          SELECT activity_id,
            AVG(count)::float8 AS count,
            AVG(portion_count)::float8 AS portion_count,
+           AVG(bottle_portion_count)::float8 AS bottle_portion_count,
+           AVG(breastfeeding_portion_count)::float8 AS breastfeeding_portion_count,
            AVG(total_amount_ml)::float8 AS total_amount_ml,
-           SUM(total_amount_ml) / NULLIF(SUM(measured_feed_count), 0)::float8 AS average_amount_ml
+           AVG(total_breastfeeding_minutes)::float8 AS total_breastfeeding_minutes,
+           SUM(total_amount_ml) / NULLIF(SUM(bottle_fed_count), 0)::float8 AS average_amount_ml,
+           SUM(total_breastfeeding_minutes) / NULLIF(SUM(breast_fed_count), 0)::float8 AS average_breastfeeding_minutes
          FROM daily
          LEFT JOIN excluded_average_days ON excluded_average_days.local_date = daily.local_date
          WHERE excluded_average_days.local_date IS NULL
@@ -799,8 +814,12 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
          SELECT activity_id,
            COUNT(*)::int AS count,
            COALESCE(SUM(portion_count), 0)::int AS portion_count,
+           COALESCE(SUM(bottle_portion_count), 0)::int AS bottle_portion_count,
+           COALESCE(SUM(breastfeeding_portion_count), 0)::int AS breastfeeding_portion_count,
            COALESCE(SUM(total_amount_ml), 0)::float8 AS total_amount_ml,
-           SUM(total_amount_ml) / NULLIF(SUM(measured_feed_count), 0)::float8 AS average_amount_ml
+           COALESCE(SUM(total_breastfeeding_minutes), 0)::float8 AS total_breastfeeding_minutes,
+           SUM(total_amount_ml) / NULLIF(SUM(bottle_fed_count), 0)::float8 AS average_amount_ml,
+           SUM(total_breastfeeding_minutes) / NULLIF(SUM(breast_fed_count), 0)::float8 AS average_breastfeeding_minutes
          FROM log_metrics
          WHERE event_time >= now() - INTERVAL '24 hours'
          GROUP BY activity_id
@@ -820,8 +839,12 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
                'date', local_date,
                'count', count,
                'portion_count', portion_count,
+               'bottle_portion_count', bottle_portion_count,
+               'breastfeeding_portion_count', breastfeeding_portion_count,
                'total_amount_ml', total_amount_ml,
-               'average_amount_ml', total_amount_ml / NULLIF(measured_feed_count, 0)::float8,
+               'total_breastfeeding_minutes', total_breastfeeding_minutes,
+               'average_amount_ml', total_amount_ml / NULLIF(bottle_fed_count, 0)::float8,
+               'average_breastfeeding_minutes', total_breastfeeding_minutes / NULLIF(breast_fed_count, 0)::float8,
                'excluded_from_average', excluded_from_average
              )
              ORDER BY local_date DESC
@@ -834,16 +857,28 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
          first_record.first_record_date,
          COALESCE(average_metrics.count, 0)::float8 AS average_count,
          COALESCE(average_metrics.portion_count, 0)::float8 AS average_portion_count,
+         COALESCE(average_metrics.bottle_portion_count, 0)::float8 AS average_bottle_portion_count,
+         COALESCE(average_metrics.breastfeeding_portion_count, 0)::float8 AS average_breastfeeding_portion_count,
          COALESCE(average_metrics.total_amount_ml, 0)::float8 AS average_total_amount_ml,
+         COALESCE(average_metrics.total_breastfeeding_minutes, 0)::float8 AS average_total_breastfeeding_minutes,
          average_metrics.average_amount_ml,
+         average_metrics.average_breastfeeding_minutes,
          COALESCE(calendar_day_metrics.count, 0)::int AS calendar_day_count,
          COALESCE(calendar_day_metrics.portion_count, 0)::int AS calendar_day_portion_count,
+         COALESCE(calendar_day_metrics.bottle_portion_count, 0)::int AS calendar_day_bottle_portion_count,
+         COALESCE(calendar_day_metrics.breastfeeding_portion_count, 0)::int AS calendar_day_breastfeeding_portion_count,
          COALESCE(calendar_day_metrics.total_amount_ml, 0)::float8 AS calendar_day_total_amount_ml,
-         calendar_day_metrics.total_amount_ml / NULLIF(calendar_day_metrics.measured_feed_count, 0)::float8 AS calendar_day_average_amount_ml,
+         COALESCE(calendar_day_metrics.total_breastfeeding_minutes, 0)::float8 AS calendar_day_total_breastfeeding_minutes,
+         calendar_day_metrics.total_amount_ml / NULLIF(calendar_day_metrics.bottle_fed_count, 0)::float8 AS calendar_day_average_amount_ml,
+         calendar_day_metrics.total_breastfeeding_minutes / NULLIF(calendar_day_metrics.breast_fed_count, 0)::float8 AS calendar_day_average_breastfeeding_minutes,
          COALESCE(last_24_hours_metrics.count, 0)::int AS last_24_hours_count,
          COALESCE(last_24_hours_metrics.portion_count, 0)::int AS last_24_hours_portion_count,
+         COALESCE(last_24_hours_metrics.bottle_portion_count, 0)::int AS last_24_hours_bottle_portion_count,
+         COALESCE(last_24_hours_metrics.breastfeeding_portion_count, 0)::int AS last_24_hours_breastfeeding_portion_count,
          COALESCE(last_24_hours_metrics.total_amount_ml, 0)::float8 AS last_24_hours_total_amount_ml,
+         COALESCE(last_24_hours_metrics.total_breastfeeding_minutes, 0)::float8 AS last_24_hours_total_breastfeeding_minutes,
          last_24_hours_metrics.average_amount_ml AS last_24_hours_average_amount_ml,
+         last_24_hours_metrics.average_breastfeeding_minutes AS last_24_hours_average_breastfeeding_minutes,
          COALESCE(history_metrics.days, '[]'::jsonb) AS history
        FROM activity_definition AS activity
        CROSS JOIN first_record
@@ -867,42 +902,69 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
   const metrics = (row: {
     count: number;
     portion_count: number;
+    bottle_portion_count: number;
+    breastfeeding_portion_count: number;
     total_amount_ml: number;
+    total_breastfeeding_minutes: number;
     average_amount_ml: number | null;
+    average_breastfeeding_minutes: number | null;
   }) => ({
     count: Number(row.count),
     portion_count: Number(row.portion_count),
+    bottle_portion_count: Number(row.bottle_portion_count),
+    breastfeeding_portion_count: Number(row.breastfeeding_portion_count),
     total_amount_ml: Number(row.total_amount_ml),
+    total_breastfeeding_minutes: Number(row.total_breastfeeding_minutes),
     average_amount_ml:
       row.average_amount_ml === null ? null : Number(row.average_amount_ml),
+    average_breastfeeding_minutes:
+      row.average_breastfeeding_minutes === null
+        ? null
+        : Number(row.average_breastfeeding_minutes),
   });
   const analytics = analyticsRows.rows.map((row) => ({
     activity_id: row.activity_id,
     average: metrics({
       count: row.average_count,
       portion_count: row.average_portion_count,
+      bottle_portion_count: row.average_bottle_portion_count,
+      breastfeeding_portion_count: row.average_breastfeeding_portion_count,
       total_amount_ml: row.average_total_amount_ml,
+      total_breastfeeding_minutes: row.average_total_breastfeeding_minutes,
       average_amount_ml: row.average_amount_ml,
+      average_breastfeeding_minutes: row.average_breastfeeding_minutes,
     }),
     calendar_day: metrics({
       count: row.calendar_day_count,
       portion_count: row.calendar_day_portion_count,
+      bottle_portion_count: row.calendar_day_bottle_portion_count,
+      breastfeeding_portion_count: row.calendar_day_breastfeeding_portion_count,
       total_amount_ml: row.calendar_day_total_amount_ml,
+      total_breastfeeding_minutes: row.calendar_day_total_breastfeeding_minutes,
       average_amount_ml: row.calendar_day_average_amount_ml,
+      average_breastfeeding_minutes: row.calendar_day_average_breastfeeding_minutes,
     }),
     last_24_hours: metrics({
       count: row.last_24_hours_count,
       portion_count: row.last_24_hours_portion_count,
+      bottle_portion_count: row.last_24_hours_bottle_portion_count,
+      breastfeeding_portion_count: row.last_24_hours_breastfeeding_portion_count,
       total_amount_ml: row.last_24_hours_total_amount_ml,
+      total_breastfeeding_minutes: row.last_24_hours_total_breastfeeding_minutes,
       average_amount_ml: row.last_24_hours_average_amount_ml,
+      average_breastfeeding_minutes: row.last_24_hours_average_breastfeeding_minutes,
     }),
     history: row.history.map(
       (day: {
         date: string;
         count: number;
         portion_count: number;
+        bottle_portion_count: number;
+        breastfeeding_portion_count: number;
         total_amount_ml: number;
+        total_breastfeeding_minutes: number;
         average_amount_ml: number | null;
+        average_breastfeeding_minutes: number | null;
         excluded_from_average: boolean;
       }) => ({
         date: String(day.date).slice(0, 10),
@@ -962,7 +1024,8 @@ app.post("/api/children/:childId/logs", async (request, response) => {
       portions?: {
         kind: "breast_milk" | "formula";
         deliveryMethod: "bottle" | "breastfeeding";
-        amountMl: number;
+        amountMl?: number;
+        durationMinutes?: number;
       }[];
       note?: string;
       completeOneTimeSchedule?: boolean;
@@ -992,7 +1055,8 @@ app.post("/api/children/:childId/logs", async (request, response) => {
         ? (portions ?? []).map((portion, position) => ({
             kind: portion.kind,
             delivery_method: portion.deliveryMethod,
-            amount_ml: Number(portion.amountMl),
+            amount_ml: portion.deliveryMethod === "bottle" ? Number(portion.amountMl) : null,
+            duration_minutes: portion.deliveryMethod === "breastfeeding" ? Number(portion.durationMinutes) : null,
             position,
           }))
         : [];
@@ -1004,8 +1068,13 @@ app.post("/api/children/:childId/logs", async (request, response) => {
             (portion.kind !== "breast_milk" && portion.kind !== "formula") ||
             (portion.delivery_method !== "bottle" &&
               portion.delivery_method !== "breastfeeding") ||
-            !Number.isFinite(portion.amount_ml) ||
-            portion.amount_ml <= 0,
+            (portion.delivery_method === "bottle" &&
+              (!Number.isFinite(portion.amount_ml) || portion.amount_ml === null || portion.amount_ml <= 0)) ||
+            (portion.delivery_method === "breastfeeding" &&
+              (portion.kind !== "breast_milk" ||
+                !Number.isFinite(portion.duration_minutes) ||
+                portion.duration_minutes === null ||
+                portion.duration_minutes <= 0)),
         ))
     ) {
       await client.query("ROLLBACK");
@@ -1026,9 +1095,9 @@ app.post("/api/children/:childId/logs", async (request, response) => {
     );
     if (feedingPortions.length)
       await client.query(
-        `INSERT INTO feeding_portion (log_id, kind, delivery_method, amount_ml, position)
-         SELECT $1, portion.kind, portion.delivery_method, portion.amount_ml, portion.position
-         FROM jsonb_to_recordset($2::jsonb) AS portion(kind text, delivery_method text, amount_ml numeric, position smallint)`,
+        `INSERT INTO feeding_portion (log_id, kind, delivery_method, amount_ml, duration_minutes, position)
+         SELECT $1, portion.kind, portion.delivery_method, portion.amount_ml, portion.duration_minutes, portion.position
+         FROM jsonb_to_recordset($2::jsonb) AS portion(kind text, delivery_method text, amount_ml numeric, duration_minutes numeric, position smallint)`,
         [inserted.rows[0].id, JSON.stringify(feedingPortions)],
       );
     if (completeOneTimeSchedule) {
@@ -1085,7 +1154,8 @@ app.put("/api/logs/:logId", async (request, response) => {
       portions?: {
         kind: "breast_milk" | "formula";
         deliveryMethod: "bottle" | "breastfeeding";
-        amountMl: number;
+        amountMl?: number;
+        durationMinutes?: number;
       }[];
       note?: string;
     };
@@ -1121,7 +1191,8 @@ app.put("/api/logs/:logId", async (request, response) => {
         ? (portions ?? []).map((portion, position) => ({
             kind: portion.kind,
             delivery_method: portion.deliveryMethod,
-            amount_ml: Number(portion.amountMl),
+            amount_ml: portion.deliveryMethod === "bottle" ? Number(portion.amountMl) : null,
+            duration_minutes: portion.deliveryMethod === "breastfeeding" ? Number(portion.durationMinutes) : null,
             position,
           }))
         : [];
@@ -1133,8 +1204,13 @@ app.put("/api/logs/:logId", async (request, response) => {
             (portion.kind !== "breast_milk" && portion.kind !== "formula") ||
             (portion.delivery_method !== "bottle" &&
               portion.delivery_method !== "breastfeeding") ||
-            !Number.isFinite(portion.amount_ml) ||
-            portion.amount_ml <= 0,
+            (portion.delivery_method === "bottle" &&
+              (!Number.isFinite(portion.amount_ml) || portion.amount_ml === null || portion.amount_ml <= 0)) ||
+            (portion.delivery_method === "breastfeeding" &&
+              (portion.kind !== "breast_milk" ||
+                !Number.isFinite(portion.duration_minutes) ||
+                portion.duration_minutes === null ||
+                portion.duration_minutes <= 0)),
         ))
     ) {
       await client.query("ROLLBACK");
@@ -1159,9 +1235,9 @@ app.put("/api/logs/:logId", async (request, response) => {
     ]);
     if (feedingPortions.length)
       await client.query(
-        `INSERT INTO feeding_portion (log_id, kind, delivery_method, amount_ml, position)
-         SELECT $1, portion.kind, portion.delivery_method, portion.amount_ml, portion.position
-         FROM jsonb_to_recordset($2::jsonb) AS portion(kind text, delivery_method text, amount_ml numeric, position smallint)`,
+        `INSERT INTO feeding_portion (log_id, kind, delivery_method, amount_ml, duration_minutes, position)
+         SELECT $1, portion.kind, portion.delivery_method, portion.amount_ml, portion.duration_minutes, portion.position
+         FROM jsonb_to_recordset($2::jsonb) AS portion(kind text, delivery_method text, amount_ml numeric, duration_minutes numeric, position smallint)`,
         [request.params.logId, JSON.stringify(feedingPortions)],
       );
     await client.query("COMMIT");
@@ -1798,7 +1874,7 @@ app.get("/api/children/:childId/export.csv", async (request, response) => {
   const [logs, schedules] = await Promise.all([
     pool.query(
       `SELECT activity.name, log.event_time, log.field_values, log.note, author.display_name,
-        COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions,
+        COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml, 'duration_minutes', portion.duration_minutes) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions,
         COALESCE((SELECT jsonb_agg(jsonb_build_object('field_key', field.field_key, 'label', field.label, 'field_type', field.field_type, 'unit', field.unit, 'boolean_true_label', field.boolean_true_label, 'boolean_false_label', field.boolean_false_label) ORDER BY field.id) FROM activity_field_definition AS field WHERE field.activity_id = activity.id AND field.archived_at IS NULL), '[]'::jsonb) AS fields
        FROM activity_log AS log
        JOIN activity_definition AS activity ON activity.id = log.activity_id
@@ -1821,7 +1897,7 @@ app.get("/api/children/:childId/export.csv", async (request, response) => {
     `\"${String(value ?? "").replaceAll('\"', '\"\"')}\"`;
   const readableLogDetails = (row: {
     field_values: Record<string, unknown>;
-    feeding_portions: Array<{ kind: string; delivery_method: string; amount_ml: number }>;
+    feeding_portions: Array<{ kind: string; delivery_method: string; amount_ml: number | null; duration_minutes: number | null }>;
     fields: Array<{
       field_key: string;
       label: string;
@@ -1850,7 +1926,9 @@ app.get("/api/children/:childId/export.csv", async (request, response) => {
       ...row.feeding_portions.map((portion) => {
         const kind = portion.kind === "breast_milk" ? "Breast milk" : "Formula";
         const delivery = portion.delivery_method === "breastfeeding" ? "Breastfeeding" : "Bottle";
-        return `${kind} · ${delivery}: ${portion.amount_ml} ml`;
+        return portion.delivery_method === "breastfeeding"
+          ? `${kind} · ${delivery}: ${portion.duration_minutes} min`
+          : `${kind} · ${delivery}: ${portion.amount_ml} ml`;
       }),
     );
     return details.join(" · ");
@@ -1955,13 +2033,16 @@ app.get("/api/children/:childId/export.report", async (request, response) => {
          log.event_time,
          portions.portion_count,
          portions.total_amount_ml,
-         CASE WHEN portions.portion_count > 0 THEN 1 ELSE 0 END AS measured_feed_count
+         portions.total_breastfeeding_minutes,
+         CASE WHEN portions.total_amount_ml > 0 THEN 1 ELSE 0 END AS bottle_fed_count,
+         CASE WHEN portions.total_breastfeeding_minutes > 0 THEN 1 ELSE 0 END AS breast_fed_count
        FROM activity_log AS log
        CROSS JOIN child_context
        JOIN selected_activities AS activity ON activity.id = log.activity_id
        LEFT JOIN LATERAL (
          SELECT COUNT(*)::int AS portion_count,
-           COALESCE(SUM(portion.amount_ml), 0)::float8 AS total_amount_ml
+           COALESCE(SUM(portion.amount_ml), 0)::float8 AS total_amount_ml,
+           COALESCE(SUM(portion.duration_minutes), 0)::float8 AS total_breastfeeding_minutes
          FROM feeding_portion AS portion
          WHERE portion.log_id = log.id
        ) AS portions ON true
@@ -1972,7 +2053,9 @@ app.get("/api/children/:childId/export.report", async (request, response) => {
          COUNT(*)::int AS count,
          COALESCE(SUM(portion_count), 0)::int AS portion_count,
          COALESCE(SUM(total_amount_ml), 0)::float8 AS total_amount_ml,
-         COALESCE(SUM(measured_feed_count), 0)::int AS measured_feed_count
+         COALESCE(SUM(total_breastfeeding_minutes), 0)::float8 AS total_breastfeeding_minutes,
+         COALESCE(SUM(bottle_fed_count), 0)::int AS bottle_fed_count,
+         COALESCE(SUM(breast_fed_count), 0)::int AS breast_fed_count
        FROM log_metrics
        GROUP BY activity_id, local_date
      ),
@@ -1992,7 +2075,9 @@ app.get("/api/children/:childId/export.report", async (request, response) => {
          AVG(count)::float8 AS count,
          AVG(portion_count)::float8 AS portion_count,
          AVG(total_amount_ml)::float8 AS total_amount_ml,
-         SUM(total_amount_ml) / NULLIF(SUM(measured_feed_count), 0)::float8 AS average_amount_ml
+         AVG(total_breastfeeding_minutes)::float8 AS total_breastfeeding_minutes,
+         SUM(total_amount_ml) / NULLIF(SUM(bottle_fed_count), 0)::float8 AS average_amount_ml,
+         SUM(total_breastfeeding_minutes) / NULLIF(SUM(breast_fed_count), 0)::float8 AS average_breastfeeding_minutes
        FROM daily
        LEFT JOIN excluded_average_days ON excluded_average_days.local_date = daily.local_date
        WHERE excluded_average_days.local_date IS NULL
@@ -2007,7 +2092,9 @@ app.get("/api/children/:childId/export.report", async (request, response) => {
          COUNT(*)::int AS count,
          COALESCE(SUM(portion_count), 0)::int AS portion_count,
          COALESCE(SUM(total_amount_ml), 0)::float8 AS total_amount_ml,
-         SUM(total_amount_ml) / NULLIF(SUM(measured_feed_count), 0)::float8 AS average_amount_ml
+         COALESCE(SUM(total_breastfeeding_minutes), 0)::float8 AS total_breastfeeding_minutes,
+         SUM(total_amount_ml) / NULLIF(SUM(bottle_fed_count), 0)::float8 AS average_amount_ml,
+         SUM(total_breastfeeding_minutes) / NULLIF(SUM(breast_fed_count), 0)::float8 AS average_breastfeeding_minutes
        FROM log_metrics
        WHERE event_time >= now() - INTERVAL '24 hours'
        GROUP BY activity_id
@@ -2020,7 +2107,9 @@ app.get("/api/children/:childId/export.report", async (request, response) => {
              'count', daily.count,
              'portion_count', daily.portion_count,
              'total_amount_ml', daily.total_amount_ml,
-             'average_amount_ml', daily.total_amount_ml / NULLIF(daily.measured_feed_count, 0)::float8,
+             'total_breastfeeding_minutes', daily.total_breastfeeding_minutes,
+             'average_amount_ml', daily.total_amount_ml / NULLIF(daily.bottle_fed_count, 0)::float8,
+             'average_breastfeeding_minutes', daily.total_breastfeeding_minutes / NULLIF(daily.breast_fed_count, 0)::float8,
              'excluded_from_average', excluded_average_days.local_date IS NOT NULL
            ) ORDER BY daily.local_date DESC
          ) AS days
@@ -2033,15 +2122,21 @@ app.get("/api/children/:childId/export.report", async (request, response) => {
        COALESCE(average_metrics.count, 0)::float8 AS average_count,
        COALESCE(average_metrics.portion_count, 0)::float8 AS average_portion_count,
        COALESCE(average_metrics.total_amount_ml, 0)::float8 AS average_total_amount_ml,
+       COALESCE(average_metrics.total_breastfeeding_minutes, 0)::float8 AS average_total_breastfeeding_minutes,
        average_metrics.average_amount_ml,
+       average_metrics.average_breastfeeding_minutes,
        COALESCE(calendar_day_metrics.count, 0)::int AS calendar_day_count,
        COALESCE(calendar_day_metrics.portion_count, 0)::int AS calendar_day_portion_count,
        COALESCE(calendar_day_metrics.total_amount_ml, 0)::float8 AS calendar_day_total_amount_ml,
-       calendar_day_metrics.total_amount_ml / NULLIF(calendar_day_metrics.measured_feed_count, 0)::float8 AS calendar_day_average_amount_ml,
+       COALESCE(calendar_day_metrics.total_breastfeeding_minutes, 0)::float8 AS calendar_day_total_breastfeeding_minutes,
+       calendar_day_metrics.total_amount_ml / NULLIF(calendar_day_metrics.bottle_fed_count, 0)::float8 AS calendar_day_average_amount_ml,
+       calendar_day_metrics.total_breastfeeding_minutes / NULLIF(calendar_day_metrics.breast_fed_count, 0)::float8 AS calendar_day_average_breastfeeding_minutes,
        COALESCE(last_24_hours_metrics.count, 0)::int AS last_24_hours_count,
        COALESCE(last_24_hours_metrics.portion_count, 0)::int AS last_24_hours_portion_count,
        COALESCE(last_24_hours_metrics.total_amount_ml, 0)::float8 AS last_24_hours_total_amount_ml,
+       COALESCE(last_24_hours_metrics.total_breastfeeding_minutes, 0)::float8 AS last_24_hours_total_breastfeeding_minutes,
        last_24_hours_metrics.average_amount_ml AS last_24_hours_average_amount_ml,
+       last_24_hours_metrics.average_breastfeeding_minutes AS last_24_hours_average_breastfeeding_minutes,
        COALESCE(history_metrics.days, '[]'::jsonb) AS history
      FROM selected_activities AS activity
      CROSS JOIN child_context
@@ -2074,6 +2169,7 @@ app.get("/api/children/:childId/export.report", async (request, response) => {
           portions: "מנות",
           total: "סך החלב",
           perFeed: "ממוצע להאכלה",
+          averageBreastfeeding: "ממוצע זמן הנקה",
           history: "היסטוריה",
           noHistory: "אין נתונים בטווח שנבחר",
           print: "הדפסה / שמירה כ־PDF",
@@ -2088,6 +2184,7 @@ app.get("/api/children/:childId/export.report", async (request, response) => {
           portions: "Portions",
           total: "Total milk",
           perFeed: "Average per feed",
+          averageBreastfeeding: "Average breastfeeding time",
           history: "History",
           noHistory: "No records in the selected range",
           print: "Print / Save as PDF",
@@ -2101,12 +2198,20 @@ app.get("/api/children/:childId/export.report", async (request, response) => {
     const formatted = formatNumber(value);
     return formatted === "—" ? formatted : `${formatted} ml`;
   };
+  const formatMinutes = (value: unknown) => {
+    const formatted = formatNumber(value);
+    return formatted === "—" ? formatted : `${formatted} min`;
+  };
   const metricList = (row: Record<string, unknown>, prefix: string) => {
     const feeding = row.kind === "feeding";
     const averageAmountKey =
       prefix === "average"
         ? "average_amount_ml"
         : `${prefix}_average_amount_ml`;
+    const averageBreastfeedingKey =
+      prefix === "average"
+        ? "average_breastfeeding_minutes"
+        : `${prefix}_average_breastfeeding_minutes`;
     const metrics = [
       `<li><span>${words[feeding ? "feedings" : "records"]}</span><strong>${formatNumber(row[`${prefix}_count`])}</strong></li>`,
     ];
@@ -2115,6 +2220,7 @@ app.get("/api/children/:childId/export.report", async (request, response) => {
         `<li><span>${words.portions}</span><strong>${formatNumber(row[`${prefix}_portion_count`])}</strong></li>`,
         `<li><span>${words.total}</span><strong>${formatMilliliters(row[`${prefix}_total_amount_ml`])}</strong></li>`,
         `<li><span>${words.perFeed}</span><strong>${formatMilliliters(row[averageAmountKey])}</strong></li>`,
+        `<li><span>${words.averageBreastfeeding}</span><strong>${formatMinutes(row[averageBreastfeedingKey])}</strong></li>`,
       );
     }
     return `<ul class="metrics">${metrics.join("")}</ul>`;
@@ -2130,11 +2236,11 @@ app.get("/api/children/:childId/export.report", async (request, response) => {
                 { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" },
               ).format(new Date(`${String(day.date).slice(0, 10)}T12:00:00Z`));
               const feeding = row.kind === "feeding";
-              return `<tr><th>${escapeHtml(date)}</th><td>${formatNumber(day.count)}</td>${feeding ? `<td>${formatNumber(day.portion_count)}</td><td>${formatMilliliters(day.total_amount_ml)}</td><td>${formatMilliliters(day.average_amount_ml)}</td>` : ""}</tr>`;
+              return `<tr><th>${escapeHtml(date)}</th><td>${formatNumber(day.count)}</td>${feeding ? `<td>${formatNumber(day.portion_count)}</td><td>${formatMilliliters(day.total_amount_ml)}</td><td>${formatMilliliters(day.average_amount_ml)}</td><td>${formatMinutes(day.average_breastfeeding_minutes)}</td>` : ""}</tr>`;
             })
             .join("");
           const headings = row.kind === "feeding"
-            ? `<tr><th>${locale === "he" ? "תאריך" : "Date"}</th><th>${words.feedings}</th><th>${words.portions}</th><th>${words.total}</th><th>${words.perFeed}</th></tr>`
+            ? `<tr><th>${locale === "he" ? "תאריך" : "Date"}</th><th>${words.feedings}</th><th>${words.portions}</th><th>${words.total}</th><th>${words.perFeed}</th><th>${words.averageBreastfeeding}</th></tr>`
             : `<tr><th>${locale === "he" ? "תאריך" : "Date"}</th><th>${words.records}</th></tr>`;
           return `<section class="history"><h3>${escapeHtml(row.name)} — ${words.history}</h3><table><thead>${headings}</thead><tbody>${rows || `<tr><td colspan="5">${words.noHistory}</td></tr>`}</tbody></table></section>`;
         })
