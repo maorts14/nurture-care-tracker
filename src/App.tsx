@@ -477,7 +477,7 @@ export default function App() {
   }, [routePath]);
   useLayoutEffect(() => {
     document.documentElement.lang = locale;
-    document.documentElement.dir = locale === "he" ? "rtl" : "ltr";
+    document.documentElement.dir = "ltr";
     const appRoot = document.getElementById("root");
     if (appRoot) {
       appRoot.lang = locale;
@@ -2109,7 +2109,7 @@ function LogModal({
             required
           />
         </label>
-        {activity?.kind === "feeding" ? (
+        {activity?.kind === "feeding" && (
           <fieldset className="feeding-portions">
             <legend>{t("Milk portions")}</legend>
             {portions.map((portion, index) => (
@@ -2208,8 +2208,8 @@ function LogModal({
               <Plus size={15} /> {t("Add portion")}
             </button>
           </fieldset>
-        ) : (
-          activity?.fields.map((field) => (
+        )}
+        {activity?.fields.map((field) => (
             <label key={field.id}>
               {t(field.label)}
               {field.unit ? ` (${field.unit})` : ""}
@@ -2262,8 +2262,7 @@ function LogModal({
                 />
               )}
             </label>
-          ))
-        )}
+        ))}
         <label>
           {t("Note")}
           <textarea

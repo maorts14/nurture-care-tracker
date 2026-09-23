@@ -342,7 +342,7 @@ button {
   margin: 0 0 32px;
 }
 .sign-in .eyebrow { color: #302c28; font-size: calc(13px + var(--ui-text-scale)); }
-html[dir="rtl"] .sign-in .eyebrow { font-family: Heebo, sans-serif; font-size: calc(14px + var(--ui-text-scale)); font-weight: 600; letter-spacing: .04em; }
+[dir="rtl"] .sign-in .eyebrow { font-family: Heebo, sans-serif; font-size: calc(14px + var(--ui-text-scale)); font-weight: 600; letter-spacing: .04em; }
 .sign-in h1 {
   margin: 0;
   font-size: 26px;
@@ -1382,6 +1382,7 @@ nav em {
   border-radius: 8px;
 }
 .due-icon {
+  flex: 0 0 42px;
   width: 42px;
   height: 42px;
   display: grid;
@@ -1399,6 +1400,9 @@ nav em {
   font-size: calc(17px + var(--ui-text-scale));
   font-weight: 700;
 }
+.due-item-open-detail > div {
+  min-width: 0;
+}
 .care-gap h3 {
   margin: 0;
   font-size: calc(14px + var(--ui-text-scale));
@@ -1408,6 +1412,7 @@ nav em {
   margin: 4px 0 0;
   font-size: calc(14px + var(--ui-text-scale));
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 .care-gap p {
   color: #413d39;
@@ -1463,6 +1468,7 @@ nav em {
   line-height: 1;
 }
 .due-actions {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -1706,6 +1712,31 @@ nav em {
   font-size: calc(14px + var(--ui-text-scale));
   font-weight: 700;
   margin-top: 13px;
+}
+.activity-color-field {
+  display: grid;
+  gap: 7px;
+  margin-top: 13px;
+  color: #302c28;
+  font-size: calc(14px + var(--ui-text-scale));
+  font-weight: 700;
+}
+.activity-color-field input[type="color"] {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  appearance: none;
+  cursor: pointer;
+  overflow: hidden;
+}
+.activity-color-field input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.activity-color-field input[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: 50%;
 }
 .log-modal input,
 .log-modal textarea,
@@ -2512,7 +2543,7 @@ nav em {
 .activity-field-editor {
   display: grid;
   gap: 14px;
-  margin: 16px 0 0;
+  margin: 0;
   padding: 16px 14px;
   border: 1px solid #e5ded6;
   border-radius: 14px;
@@ -3560,7 +3591,7 @@ button.interactive-row-content { cursor: pointer; }
     bottom: 0;
     left: 0;
     right: auto;
-    width: min(82vw, 300px);
+    width: min(76vw, 280px);
     height: auto;
     padding: 26px 16px 18px;
     border: 0;
@@ -3760,7 +3791,7 @@ button.interactive-row-content { cursor: pointer; }
     top: 0;
     bottom: 0;
     left: 0;
-    width: min(82vw, 300px);
+    width: min(76vw, 280px);
     min-height: 0;
     padding: 26px 16px 18px;
     transform: translateX(-105%);

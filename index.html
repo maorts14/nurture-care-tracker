@@ -15,7 +15,7 @@
       (() => {
         const locale = localStorage.getItem("feedme_locale") === "he" || navigator.language.startsWith("he") ? "he" : "en";
         document.documentElement.lang = locale;
-        document.documentElement.dir = locale === "he" ? "rtl" : "ltr";
+        document.documentElement.dir = "ltr";
         const appRoot = document.getElementById("root");
         appRoot.lang = locale;
         appRoot.dir = locale === "he" ? "rtl" : "ltr";

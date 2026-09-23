@@ -233,6 +233,49 @@ test("custom activities and their fields are managed by owners or care managers"
   assert.equal((await owner.request(`/api/activities/${activityId}`, { method: "DELETE" })).status, 204);
 });
 
+test("built-in activities remain defaults but can be customized per child", async () => {
+  const owner = await alex();
+  const dashboard = (await (await owner.request(`/api/children/${leoId}/dashboard`)).json()) as {
+    activities: Array<{
+      id: string;
+      kind: string;
+      name: string;
+      color: string;
+      icon: string;
+      fields: Array<{ id: string; field_key: string }>;
+    }>;
+  };
+  const feeding = dashboard.activities.find((activity) => activity.kind === "feeding")!;
+
+  assert.equal(
+    (await owner.request(`/api/activities/${feeding.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ name: "Meals", color: "#1d9d83", icon: "apple" }),
+    })).status,
+    204,
+  );
+  assert.equal(
+    (await owner.request(`/api/activities/${feeding.id}/fields`, {
+      method: "PUT",
+      body: JSON.stringify({
+        fields: [{ key: "appetite", label: "Appetite", type: "select", options: ["Low", "Good"] }],
+      }),
+    })).status,
+    204,
+  );
+
+  const updated = (await (await owner.request(`/api/children/${leoId}/dashboard`)).json()) as typeof dashboard;
+  const customizedFeeding = updated.activities.find((activity) => activity.id === feeding.id)!;
+  assert.equal(customizedFeeding.kind, "feeding");
+  assert.equal(customizedFeeding.name, "Meals");
+  assert.equal(customizedFeeding.color, "#1d9d83");
+  assert.equal(customizedFeeding.icon, "apple");
+  assert.deepEqual(
+    customizedFeeding.fields.map((field) => field.field_key),
+    ["appetite"],
+  );
+});
+
 test("caregivers can log care but cannot administer activities or reminders", async () => {
   const owner = await alex();
   const dashboard = (await (await owner.request(`/api/children/${leoId}/dashboard`)).json()) as {

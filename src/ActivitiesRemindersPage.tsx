@@ -143,6 +143,14 @@ export function ActivitiesRemindersPage({
                   {t(activity.schedule ? "Edit reminder" : "Add reminder")}
                 </button>
                 <button
+                  className="more danger"
+                  aria-label={`${t("Remove activity")} ${t(activity.name)}`}
+                  title={t("Remove activity")}
+                  onClick={() => onArchiveActivity(activity.id)}
+                >
+                  <Trash2 size={16} />
+                </button>
+                <button
                   className="more"
                   aria-label={`${t("Edit")} ${t(activity.name)}`}
                   title={t("Edit")}
@@ -231,7 +239,7 @@ export function ActivitiesRemindersPage({
                 name: String(form.get("name")),
                 color: String(form.get("color")),
                 icon: String(form.get("icon") ?? editingActivity.icon),
-                ...(editingActivity.kind === "custom" ? { fields: editingFields } : {}),
+                fields: editingFields,
               });
               setEditingActivity(null);
             }}>
@@ -241,16 +249,17 @@ export function ActivitiesRemindersPage({
                 {t("Name")}
                 <input name="name" defaultValue={editingActivity.name} required />
               </label>
-              <label>
-                {t("Color")}
-                <input name="color" type="color" defaultValue={editingActivity.color} />
-              </label>
-              {editingActivity.kind === "custom" && (
-                <ActivityIconPicker locale={locale} initialIcon={editingActivity.icon} />
-              )}
-              {editingActivity.kind === "custom" && (
-                <ActivityFieldsEditor locale={locale} fields={editingFields} onChange={setEditingFields} />
-              )}
+              <div className="activity-color-field">
+                <span id="activity-color-label">{t("Color")}</span>
+                <input
+                  aria-labelledby="activity-color-label"
+                  name="color"
+                  type="color"
+                  defaultValue={editingActivity.color}
+                />
+              </div>
+              <ActivityIconPicker locale={locale} initialIcon={editingActivity.icon} />
+              <ActivityFieldsEditor locale={locale} fields={editingFields} onChange={setEditingFields} />
               <div className="modal-actions">
                 <button className="primary submit">{t("Save changes")}</button>
                 <button className="text-button danger" type="button" onClick={() => {
@@ -288,18 +297,18 @@ export function ActivitiesRemindersPage({
               initialIntervalHours={(schedulingActivity.schedule?.interval_minutes ?? 180) / 60}
               initialScheduledFor={schedulingActivity.schedule?.scheduled_for}
             />
-            <div className="modal-actions">
-              <button className="primary submit">{t("Save reminder")}</button>
-              {schedulingActivity.schedule && (
-                <button className="text-button danger" type="button" onClick={() => {
-                  onDeleteSchedule(schedulingActivity);
-                  setSchedulingActivity(null);
-                }}>
-                  <Trash2 size={16} />
-                  {t("Delete")}
-                </button>
-              )}
-            </div>
+              <div className="modal-actions">
+                <button className="primary submit">{t("Save reminder")}</button>
+                {schedulingActivity.schedule && (
+                  <button className="text-button danger" type="button" onClick={() => {
+                    onDeleteSchedule(schedulingActivity);
+                    setSchedulingActivity(null);
+                  }}>
+                    <Trash2 size={16} />
+                    {t("Delete")}
+                  </button>
+                )}
+              </div>
           </form>
         </ModalBackdrop>
       )}

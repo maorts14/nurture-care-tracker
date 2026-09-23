@@ -10,7 +10,7 @@ import { pool } from "./database.js";
 
 type Session = { userId: string };
 const customActivityIcons = new Set([
-  "heart-pulse", "stethoscope", "pill", "syringe", "thermometer", "bath", "bed", "baby",
+  "utensils", "droplets", "heart-pulse", "stethoscope", "pill", "syringe", "thermometer", "bath", "bed", "baby",
   "milk", "apple", "sun", "moon", "footprints", "book", "music", "sparkles",
 ]);
 type ActivityFieldInput = {
@@ -517,7 +517,7 @@ app.post("/api/children", async (request, response) => {
       [id, session.userId],
     );
     await client.query(
-      "INSERT INTO activity_definition (child_id, name, kind, color) VALUES ($1, 'Feeding', 'feeding', '#ba5c30'), ($1, 'Diaper change', 'diaper', '#526cdb')",
+      "INSERT INTO activity_definition (child_id, name, kind, color, icon) VALUES ($1, 'Feeding', 'feeding', '#ba5c30', 'utensils'), ($1, 'Diaper change', 'diaper', '#526cdb', 'droplets')",
       [id],
     );
     await client.query(
@@ -1465,7 +1465,6 @@ app.put("/api/activities/:activityId/fields", async (request, response) => {
        FROM activity_definition AS activity
        JOIN child_membership AS membership ON membership.child_id = activity.child_id
        WHERE activity.id = $1
-         AND activity.kind = 'custom'
          AND activity.archived_at IS NULL
          AND membership.user_id = $2
          AND membership.role IN ('owner', 'care_manager')`,

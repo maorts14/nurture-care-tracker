@@ -1,3 +1,5 @@
+name: feedme-tests
+
 services:
   db:
     image: postgres:16-alpine

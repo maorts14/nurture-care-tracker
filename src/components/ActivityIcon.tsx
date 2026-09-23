@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 
 export const customActivityIcons = [
+  { key: "utensils", label: "Feeding", hebrewLabel: "האכלה", icon: Utensils },
+  { key: "droplets", label: "Diaper", hebrewLabel: "חיתול", icon: Droplets },
   { key: "heart-pulse", label: "Care", hebrewLabel: "טיפול", icon: HeartPulse },
   { key: "stethoscope", label: "Stethoscope", hebrewLabel: "סטטוסקופ", icon: Stethoscope },
   { key: "pill", label: "Medicine", hebrewLabel: "תרופה", icon: Pill },
@@ -52,10 +54,8 @@ export function ActivityIcon({
   icon?: string;
   size?: number;
 }) {
-  const Icon = kind === "feeding"
-    ? Utensils
-    : kind === "diaper"
-      ? Droplets
-      : customIconByKey.get(icon ?? "heart-pulse") ?? HeartPulse;
+  const Icon = customIconByKey.get(icon ?? "") ?? (
+    kind === "feeding" ? Utensils : kind === "diaper" ? Droplets : HeartPulse
+  );
   return <Icon size={size} />;
 }

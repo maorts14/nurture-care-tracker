@@ -7,10 +7,10 @@ INSERT INTO child_membership (child_id, user_id, role) VALUES
   ('33333333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'owner'),
   ('33333333-3333-3333-3333-333333333333', '22222222-2222-2222-2222-222222222222', 'caregiver'),
   ('33333333-3333-3333-3333-333333333333', '77777777-7777-7777-7777-777777777777', 'care_manager');
-INSERT INTO activity_definition (id, child_id, name, kind, color) VALUES
-  ('44444444-4444-4444-4444-444444444444', '33333333-3333-3333-3333-333333333333', 'Feeding', 'feeding', '#ba5c30'),
-  ('55555555-5555-5555-5555-555555555555', '33333333-3333-3333-3333-333333333333', 'Diaper change', 'diaper', '#526cdb'),
-  ('66666666-6666-6666-6666-666666666666', '33333333-3333-3333-3333-333333333333', 'Doctor', 'custom', '#1d9d83');
+INSERT INTO activity_definition (id, child_id, name, kind, color, icon) VALUES
+  ('44444444-4444-4444-4444-444444444444', '33333333-3333-3333-3333-333333333333', 'Feeding', 'feeding', '#ba5c30', 'utensils'),
+  ('55555555-5555-5555-5555-555555555555', '33333333-3333-3333-3333-333333333333', 'Diaper change', 'diaper', '#526cdb', 'droplets'),
+  ('66666666-6666-6666-6666-666666666666', '33333333-3333-3333-3333-333333333333', 'Doctor', 'custom', '#1d9d83', 'heart-pulse');
 INSERT INTO activity_field_definition (activity_id, field_key, label, field_type, unit, options, dashboard_metrics) VALUES
   ('55555555-5555-5555-5555-555555555555', 'type', 'Diaper type', 'select', NULL, '["Wet", "Dirty", "Mixed", "Empty"]', '["count"]'),
   ('66666666-6666-6666-6666-666666666666', 'provider', 'Provider', 'text', NULL, '[]', '[]'),
