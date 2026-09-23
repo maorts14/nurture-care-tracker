@@ -129,12 +129,6 @@ function MetricsGrid({
             </strong>
           </div>
           <div>
-            <p>{t("Total breastfeeding time")}</p>
-            <strong>
-              {metrics.total_breastfeeding_minutes > 0 ? <bdi>{pretty(metrics.total_breastfeeding_minutes)} {t("min")}</bdi> : "—"}
-            </strong>
-          </div>
-          <div>
             <p>{t("Average per feed")}</p>
             <strong>
               {metrics.average_amount_ml === null ? (
@@ -142,6 +136,12 @@ function MetricsGrid({
               ) : (
                 <bdi>{pretty(metrics.average_amount_ml)} ml</bdi>
               )}
+            </strong>
+          </div>
+          <div>
+            <p>{t("Total breastfeeding time")}</p>
+            <strong>
+              {metrics.total_breastfeeding_minutes > 0 ? <bdi>{pretty(metrics.total_breastfeeding_minutes)} {t("min")}</bdi> : "—"}
             </strong>
           </div>
           <div>
