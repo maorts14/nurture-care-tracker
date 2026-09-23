@@ -273,6 +273,7 @@ export default function App() {
   const [logOpen, setLogOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<Event | null>(null);
   const [completingScheduleActivityId, setCompletingScheduleActivityId] = useState<string | null>(null);
+  const [reminderActivityId, setReminderActivityId] = useState<string | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
   const [helpLegalOpen, setHelpLegalOpen] = useState(false);
@@ -377,28 +378,19 @@ export default function App() {
         : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
     }).format(new Date(value));
   };
-  const todayEvents = events.filter(
-    (event) => localDayKey(event.event_time) === todayDayKey,
-  );
-  const todayFeedings = todayEvents.filter((event) => event.kind === "feeding");
-  const todayDiapers = todayEvents.filter((event) => event.kind === "diaper");
-  const feed = events.filter((event) => event.kind === "feeding");
+  const recordCountsByActivity = new Map<string, number>();
+  for (const event of events) {
+    recordCountsByActivity.set(
+      event.activity_id,
+      (recordCountsByActivity.get(event.activity_id) ?? 0) + 1,
+    );
+  }
+  const recordCountsByDay = new Map<string, number>();
+  for (const event of timelineEvents) {
+    const dayKey = localDayKey(event.event_time);
+    recordCountsByDay.set(dayKey, (recordCountsByDay.get(dayKey) ?? 0) + 1);
+  }
   const current = dash?.activities.find((item) => item.id === activityId);
-  const lastFeed = feed[0];
-  const feedReminder = dash?.activities.find(
-    (activity) =>
-      activity.id === lastFeed?.activity_id && activity.schedule?.kind === "interval",
-  )?.schedule;
-  const expected = useMemo(
-    () =>
-      lastFeed && feedReminder?.interval_minutes
-        ? new Date(
-            new Date(lastFeed.event_time).getTime() +
-              feedReminder.interval_minutes * 60_000,
-          )
-        : null,
-    [lastFeed?.id, feedReminder?.interval_minutes],
-  );
   const navigate = (path: string, replace = false) => {
     const destination = new URL(path, window.location.origin);
     const current = `${location.pathname}${location.search}${location.hash}`;
@@ -753,6 +745,7 @@ export default function App() {
     ]);
     setEditingLog(null);
     setCompletingScheduleActivityId(null);
+    setReminderActivityId(null);
     setLogOpen(false);
     await loadDash(child.id);
   }
@@ -856,6 +849,7 @@ export default function App() {
     ]);
     setEditingLog(null);
     setCompletingScheduleActivityId(activity.id);
+    setReminderActivityId(activity.id);
     setLogOpen(true);
   }
   async function saveCarePause(
@@ -990,6 +984,7 @@ export default function App() {
     setSelected(null);
     setEditingLog(log);
     setCompletingScheduleActivityId(null);
+    setReminderActivityId(null);
     setLogOpen(true);
   }
   const setLocale = async (locale: User["locale"]) => {
@@ -1328,14 +1323,6 @@ export default function App() {
           <div className="top-actions">
             <button
               className="icon-button"
-              title={t("Help & legal")}
-              aria-label={t("Help & legal")}
-              onClick={() => setHelpLegalOpen(true)}
-            >
-              <CircleHelp size={18} />
-            </button>
-            <button
-              className="icon-button"
               title={t("Export CSV")}
               aria-label={t("Export CSV")}
               onClick={() =>
@@ -1358,6 +1345,7 @@ export default function App() {
                   ]);
                   setEditingLog(null);
                   setCompletingScheduleActivityId(null);
+                  setReminderActivityId(null);
                   setLogOpen(true);
                 }}
               >
@@ -1367,38 +1355,6 @@ export default function App() {
             )}
           </div>
         </div>
-        <section className="summary-strip">
-          <div>
-            <p>{t("Last feeding")}</p>
-            <strong>
-              {lastFeed ? summaryTime(lastFeed.event_time) : "—"}
-            </strong>
-          </div>
-          <div>
-            <p>{t("Next expected")}</p>
-            <strong>
-              {expected ? summaryTime(expected) : "—"}
-            </strong>
-          </div>
-          <div>
-            <p>{t("Care today")}</p>
-            <strong>
-              {todayEvents.length} {t("records")}
-            </strong>
-          </div>
-          <div>
-            <p>{t("Feedings today")}</p>
-            <strong>
-              {todayFeedings.length} {t("records")}
-            </strong>
-          </div>
-          <div>
-            <p>{t("Diapers today")}</p>
-            <strong>
-              {todayDiapers.length} {t("records")}
-            </strong>
-          </div>
-        </section>
         <UpcomingList
           activities={dash.activities}
           locale={user.locale}
@@ -1412,6 +1368,7 @@ export default function App() {
             ]);
             setEditingLog(null);
             setCompletingScheduleActivityId(null);
+            setReminderActivityId(id);
             setLogOpen(true);
           } : undefined}
           onOpen={() => navigate(`/children/${child.id}/activities-reminders`)}
@@ -1443,6 +1400,7 @@ export default function App() {
                 onChange={() => switchTimelineActivity(null)}
               />
               <span>{t("All")}</span>
+              <small>{events.length} {t("records")}</small>
             </label>
             {dash.activities.map((activity) => (
               <label
@@ -1457,6 +1415,7 @@ export default function App() {
                   onChange={() => switchTimelineActivity(activity.id)}
                 />
                 <span>{t(activity.name)}</span>
+                <small>{recordCountsByActivity.get(activity.id) ?? 0} {t("records")}</small>
               </label>
             ))}
           </div>
@@ -1522,7 +1481,10 @@ export default function App() {
                 <Fragment key={event.id}>
                   {startsNewDay && (
                     <div className="timeline-date-divider">
-                      <span>{timelineDayFormatter.format(new Date(event.event_time))}</span>
+                      <span>
+                        {timelineDayFormatter.format(new Date(event.event_time))}
+                        <small>{recordCountsByDay.get(dayKey) ?? 0} {t("records")}</small>
+                      </span>
                     </div>
                   )}
                   <InteractiveRow
@@ -1752,10 +1714,11 @@ export default function App() {
           note={note}
           createdBy={editingLog?.created_by}
           editable={!editingLog || canEditLog(editingLog)}
-          fixedActivity={Boolean(completingScheduleActivityId)}
+          lockedActivityId={reminderActivityId}
           onClose={() => {
             setEditingLog(null);
             setCompletingScheduleActivityId(null);
+            setReminderActivityId(null);
             setLogOpen(false);
           }}
           onActivity={setActivityId}
@@ -1960,17 +1923,60 @@ function UpcomingList({
                           (schedule.interval_minutes ?? 0) * 60_000,
                       ),
                     )}`;
+            const onPrimaryAction =
+              schedule.kind === "interval"
+                ? onLogActivity
+                  ? () => onLogActivity(activity.id)
+                  : undefined
+                : () => onComplete(activity);
+            const primaryActionLabel =
+              schedule.kind === "interval"
+                ? `${t("Log care")} ${t(activity.name)}`
+                : `${t("Mark complete")} ${t(activity.name)}`;
             return (
             <article className="due-item" key={activity.id}>
-              <span className="due-icon">
-                <ActivityIcon kind={activity.kind} icon={activity.icon} />
-              </span>
-              <div>
-                <p className="due-item-title">
-                  {t(activity.name)}
-                </p>
-                <p>{description}</p>
-              </div>
+              {onPrimaryAction ? (
+                <button
+                  className="due-item-open-detail"
+                  type="button"
+                  aria-label={primaryActionLabel}
+                  onClick={onPrimaryAction}
+                >
+                  <span
+                    className="due-icon"
+                    style={{
+                      background: activity.color,
+                      color: accessibleIconColor(activity.color),
+                    }}
+                  >
+                    <ActivityIcon kind={activity.kind} icon={activity.icon} />
+                  </span>
+                  <div>
+                    <p className="due-item-title">
+                      {t(activity.name)}
+                    </p>
+                    <p>{description}</p>
+                  </div>
+                </button>
+              ) : (
+                <>
+                  <span
+                    className="due-icon"
+                    style={{
+                      background: activity.color,
+                      color: accessibleIconColor(activity.color),
+                    }}
+                  >
+                    <ActivityIcon kind={activity.kind} icon={activity.icon} />
+                  </span>
+                  <div>
+                    <p className="due-item-title">
+                      {t(activity.name)}
+                    </p>
+                    <p>{description}</p>
+                  </div>
+                </>
+              )}
               <span className="due-actions">
                 {schedule.kind === "interval" && onLogActivity && (
                   <button
@@ -2027,7 +2033,7 @@ function LogModal({
   note,
   createdBy,
   editable,
-  fixedActivity,
+  lockedActivityId,
   editing,
   onClose,
   onActivity,
@@ -2046,7 +2052,7 @@ function LogModal({
   note: string;
   createdBy?: string;
   editable: boolean;
-  fixedActivity: boolean;
+  lockedActivityId: string | null;
   editing: boolean;
   onClose: () => void;
   onActivity: (id: string) => void;
@@ -2072,13 +2078,13 @@ function LogModal({
         )}
         <div className="activity-picker">
           {activities
-            .filter((item) => !fixedActivity || item.id === activity?.id)
+            .filter((item) => !lockedActivityId || item.id === lockedActivityId)
             .map((item) => (
             <button
               type="button"
               key={item.id}
               className={item.id === activity?.id ? "selected" : ""}
-              disabled={!editable || fixedActivity}
+              disabled={!editable || Boolean(lockedActivityId)}
               onClick={() => onActivity(item.id)}
             >
               <i

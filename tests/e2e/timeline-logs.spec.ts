@@ -11,6 +11,21 @@ async function signInAsAlex(page: import("@playwright/test").Page) {
 
 test.beforeEach(async () => resetTestDatabase());
 
+test("timeline puts upcoming reminders first and shows record totals for the selected history", async ({ page }) => {
+  await signInAsAlex(page);
+
+  const upcoming = page.locator(".upcoming-list");
+  await expect(upcoming).toBeVisible();
+  await expect(upcoming.locator(".due-item").first()).toBeVisible();
+  await expect(page.locator(".summary-strip")).toHaveCount(0);
+  await expect(page.locator(".timeline-filter-tab").first()).toContainText(/\d+ records/);
+  await expect(page.locator(".timeline-date-divider").first()).toContainText(/\d+ records/);
+
+  await page.locator(".timeline-filter-tab", { hasText: "Feeding" }).click();
+  await expect(page.locator(".timeline-filter-tab.active")).toContainText("Feeding");
+  await expect(page.locator(".timeline-date-divider").first()).toContainText(/\d+ records/);
+});
+
 test("caregiver creates a multi-portion feeding, opens its editor, and adds a comment", async ({ page }) => {
   await signInAsAlex(page);
   await page.getByRole("button", { name: "Log care", exact: true }).click();

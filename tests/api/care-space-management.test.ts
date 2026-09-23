@@ -355,7 +355,10 @@ test("activity schedules, notes, and exports keep their intended access and data
   const csv = await owner.request(`/api/children/${leoId}/export.csv`);
   assert.equal(csv.status, 200);
   assert.match(csv.headers.get("content-type") ?? "", /text\/csv/);
-  assert.match(await csv.text(), /record_type,activity,event_time/);
+  const csvText = await csv.text();
+  assert.match(csvText, /record_type,activity,event_time,details,values_json,note,created_by/);
+  assert.match(csvText, /Breast milk · (Bottle|Breastfeeding): \d+ ml/);
+  assert.match(csvText, /""portions""/);
 
   const report = await owner.request(
     `/api/children/${leoId}/export.report?activities=${feedingId}&period=calendar_day&history=true&historyStart=2026-09-01&historyEnd=2026-09-30&locale=en`,

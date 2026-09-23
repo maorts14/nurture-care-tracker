@@ -23,6 +23,25 @@ test("a signed-out visitor can change language from the landing page", async ({ 
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
 });
 
+test("landing carousel changes slides when either half of a screenshot is clicked", async ({ page }) => {
+  await page.goto("/");
+  const track = page.locator(".marketing-carousel-track");
+  const bounds = await track.boundingBox();
+  if (!bounds) throw new Error("Carousel track is not visible");
+
+  await track.click({ position: { x: bounds.width * 0.7, y: bounds.height / 2 } });
+  await expect(page.locator(".marketing-carousel-dots button.active")).toHaveAttribute(
+    "aria-label",
+    /Screenshot 2 of 5/,
+  );
+
+  await track.click({ position: { x: bounds.width * 0.3, y: bounds.height / 2 } });
+  await expect(page.locator(".marketing-carousel-dots button.active")).toHaveAttribute(
+    "aria-label",
+    /Screenshot 1 of 5/,
+  );
+});
+
 test("a link invitation survives the landing page and lets a new caregiver join", async ({ page }) => {
   const owner = new ApiClient();
   await owner.signIn("alex@nurture.local", "nurture-demo");

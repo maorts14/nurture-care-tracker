@@ -195,6 +195,11 @@ function ProductCarousel({ locale }: { locale: PublicLocale }) {
           dir={he ? "rtl" : "ltr"}
           ref={trackRef}
           onScroll={updateActiveSlide}
+          onClick={(event) => {
+            const bounds = event.currentTarget.getBoundingClientRect();
+            const side = event.clientX - bounds.left < bounds.width / 2 ? "left" : "right";
+            selectAdjacentSlide(side);
+          }}
           onTouchStart={(event) => {
             touchStartX.current = event.touches[0]?.clientX ?? null;
           }}

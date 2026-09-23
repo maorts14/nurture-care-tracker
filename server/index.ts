@@ -1798,7 +1798,14 @@ app.get("/api/children/:childId/export.csv", async (request, response) => {
   }
   const [logs, schedules] = await Promise.all([
     pool.query(
-      `SELECT activity.name, log.event_time, log.field_values, log.note, author.display_name, COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id JOIN app_user AS author ON author.id = log.created_by WHERE log.child_id = $1 ORDER BY log.event_time DESC`,
+      `SELECT activity.name, log.event_time, log.field_values, log.note, author.display_name,
+        COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions,
+        COALESCE((SELECT jsonb_agg(jsonb_build_object('field_key', field.field_key, 'label', field.label, 'field_type', field.field_type, 'unit', field.unit, 'boolean_true_label', field.boolean_true_label, 'boolean_false_label', field.boolean_false_label) ORDER BY field.id) FROM activity_field_definition AS field WHERE field.activity_id = activity.id AND field.archived_at IS NULL), '[]'::jsonb) AS fields
+       FROM activity_log AS log
+       JOIN activity_definition AS activity ON activity.id = log.activity_id
+       JOIN app_user AS author ON author.id = log.created_by
+       WHERE log.child_id = $1
+       ORDER BY log.event_time DESC`,
       [request.params.childId],
     ),
     pool.query(
@@ -1813,32 +1820,73 @@ app.get("/api/children/:childId/export.csv", async (request, response) => {
   ]);
   const escape = (value: unknown) =>
     `\"${String(value ?? "").replaceAll('\"', '\"\"')}\"`;
+  const readableLogDetails = (row: {
+    field_values: Record<string, unknown>;
+    feeding_portions: Array<{ kind: string; delivery_method: string; amount_ml: number }>;
+    fields: Array<{
+      field_key: string;
+      label: string;
+      field_type: string;
+      unit: string | null;
+      boolean_true_label: string | null;
+      boolean_false_label: string | null;
+    }>;
+  }) => {
+    const fieldKeys = new Set(row.fields.map((field) => field.field_key));
+    const details = row.fields.flatMap((field) => {
+      const value = row.field_values[field.field_key];
+      if (value === undefined || value === null || value === "") return [];
+      const displayValue =
+        field.field_type === "boolean"
+          ? value
+            ? field.boolean_true_label ?? "Yes"
+            : field.boolean_false_label ?? "No"
+          : `${value}${field.unit ? ` ${field.unit}` : ""}`;
+      return [`${field.label}: ${displayValue}`];
+    });
+    for (const [key, value] of Object.entries(row.field_values)) {
+      if (!fieldKeys.has(key)) details.push(`${key.replaceAll("_", " ")}: ${value}`);
+    }
+    details.push(
+      ...row.feeding_portions.map((portion) => {
+        const kind = portion.kind === "breast_milk" ? "Breast milk" : "Formula";
+        const delivery = portion.delivery_method === "breastfeeding" ? "Breastfeeding" : "Bottle";
+        return `${kind} · ${delivery}: ${portion.amount_ml} ml`;
+      }),
+    );
+    return details.join(" · ");
+  };
   const rows = [
-    "record_type,activity,event_time,values,note,created_by",
-    ...logs.rows.map((row) =>
-      [
+    "record_type,activity,event_time,details,values_json,note,created_by",
+    ...logs.rows.map((row) => {
+      const values = {
+        ...row.field_values,
+        ...(row.feeding_portions.length ? { portions: row.feeding_portions } : {}),
+      };
+      return [
         "logged",
         row.name,
         row.event_time.toISOString(),
-        JSON.stringify({
-          ...row.field_values,
-          ...(row.feeding_portions.length
-            ? { portions: row.feeding_portions }
-            : {}),
-        }),
+        readableLogDetails(row),
+        JSON.stringify(values),
         row.note,
         row.display_name,
       ]
         .map(escape)
-        .join(","),
-    ),
+        .join(",");
+    }),
     ...schedules.rows.map((row) =>
       [
         "upcoming",
         row.name,
         row.scheduled_for?.toISOString() ??
           `after ${row.interval_minutes} minutes`,
-        row.kind,
+        row.kind === "interval" ? `Every ${row.interval_minutes} minutes` : "One-time reminder",
+        JSON.stringify({
+          kind: row.kind,
+          interval_minutes: row.interval_minutes,
+          scheduled_for: row.scheduled_for,
+        }),
         "",
         "",
       ]

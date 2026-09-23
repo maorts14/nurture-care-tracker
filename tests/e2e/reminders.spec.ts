@@ -39,12 +39,18 @@ test("a caregiver manages activity-owned reminders", async ({ page }) => {
 test("recurring reminders log care while one-time reminders open a populated care form", async ({ page }) => {
   await signInAsAlex(page);
 
-  await expect(page.getByRole("button", { name: "Log care Feeding" })).toBeVisible();
+  await expect(page.locator(".due-item", { hasText: "Feeding" }).locator(".due-log")).toBeVisible();
   await expect(page.locator(".due-item", { hasText: "Feeding" })).toContainText("Next expected:");
   await expect(page.getByRole("button", { name: "Mark complete Feeding" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Mark complete Doctor" })).toBeVisible();
+  await expect(page.locator(".due-item", { hasText: "Doctor" }).locator(".check")).toBeVisible();
   await expect(page.getByRole("button", { name: "Log care Doctor" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Mark complete Doctor" }).click();
+  await page.locator(".due-item", { hasText: "Feeding" }).getByRole("button", { name: "Log care Feeding" }).first().click();
+  const recurringDialog = page.getByRole("dialog", { name: "What happened?" });
+  await expect(recurringDialog.getByRole("button", { name: "Feeding" })).toBeVisible();
+  await expect(recurringDialog.getByRole("button", { name: "Diaper change" })).toHaveCount(0);
+  await expect(recurringDialog.getByRole("button", { name: "Doctor" })).toHaveCount(0);
+  await recurringDialog.getByRole("button", { name: "Close" }).click();
+  await page.locator(".due-item", { hasText: "Doctor" }).getByRole("button", { name: "Mark complete Doctor" }).first().click();
   const dialog = page.getByRole("dialog", { name: "What happened?" });
   await expect(dialog.getByRole("button", { name: "Doctor" })).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Feeding" })).toHaveCount(0);
