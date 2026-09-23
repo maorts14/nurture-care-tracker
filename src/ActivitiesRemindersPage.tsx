@@ -106,10 +106,10 @@ export function ActivitiesRemindersPage({
   return (
     <section className="activities-reminders-page">
       <div className="page-navigation-row">
-        <TimelineBackButton locale={locale} onClick={onBack} />
         <button className="mobile-menu" aria-label={t("Open navigation")} onClick={onOpenNavigation}>
           <Menu size={21} />
         </button>
+        <TimelineBackButton locale={locale} onClick={onBack} />
       </div>
       <header className="activities-reminders-heading">
         <div>
@@ -162,19 +162,20 @@ export function ActivitiesRemindersPage({
             </span>
             <div className="activity-schedule-summary">
               <h2>{t(activity.name)}</h2>
-              <p>
-                {activity.kind === "custom"
-                  ? activity.fields.length
+              {activity.kind === "custom" && (
+                <p>
+                  {activity.fields.length
                     ? `${activity.fields.length} ${t("fields")}`
-                    : t("Custom activity")
-                  : t(activity.kind === "feeding" ? "Feeding" : "Diaper change")}
-              </p>
+                    : t("Custom activity")}
+                </p>
+              )}
             </div>
             <div className="activity-schedule-status">
-              <span>{t("Reminder")}</span>
               {activity.schedule ? (
                 <strong>
-                  {activity.schedule.kind === "one_time" ? t("One time") : t("Recurring")}
+                  {activity.schedule.kind === "one_time"
+                    ? t("One-time reminder")
+                    : t("Recurring reminder")}
                   <small>{scheduleDescription(activity.schedule, locale, t)}</small>
                 </strong>
               ) : (

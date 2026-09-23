@@ -36,6 +36,7 @@ const hebrew: Record<string, string> = {
   "No reminder yet": "עדיין אין תזכורת",
   "Edit reminder": "עריכת תזכורת",
   Recurring: "חוזרת",
+  "Recurring reminder": "תזכורת חוזרת",
   fields: "שדות",
   Fields: "שדות",
   Field: "שדה",

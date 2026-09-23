@@ -3468,12 +3468,15 @@ button.interactive-row-content { cursor: pointer; }
   }
   .activity-schedule-row .interactive-row-content {
     grid-template-columns: auto minmax(0, 1fr);
-    gap: 12px;
-    padding: 16px 0;
+    gap: 4px 10px;
+    padding: 10px 0;
   }
   .activity-schedule-status {
     grid-column: 2;
+    gap: 1px;
+    margin-top: -2px;
   }
+  .activity-schedule-status strong { gap: 0; }
   .activity-schedule-row .interactive-row-actions .text-button {
     width: 34px;
     min-height: 34px;
