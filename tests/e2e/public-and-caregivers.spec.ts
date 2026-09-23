@@ -20,7 +20,7 @@ test("a signed-out visitor can change language from the landing page", async ({ 
   const languagePicker = page.getByRole("dialog", { name: "Language" });
   await languagePicker.getByRole("button", { name: "עברית" }).click();
   await expect(page.getByRole("button", { name: "שפה" })).toBeVisible();
-  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  await expect(page.locator("#root")).toHaveAttribute("dir", "rtl");
 });
 
 test("landing carousel changes slides when either half of a screenshot is clicked", async ({ page }) => {

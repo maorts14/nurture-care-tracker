@@ -29,7 +29,7 @@ test("an owner builds a custom activity with only type-relevant field settings",
   await activityDialog.getByRole("button", { name: "Create activity" }).click();
   const bath = page.locator(".activity-schedule-row").filter({ hasText: "Bath" });
   await expect(bath).toContainText("2 fields");
-  await bath.locator("button.more").click();
+  await bath.locator("button.more:not(.danger)").click();
   const editor = page.getByRole("dialog", { name: "Bath" });
   const temperatureField = editor.locator('.activity-field-editor:has(input[value="Temperature"])');
   const bathTypeField = editor.locator('.activity-field-editor:has(input[value="Bath type"])');
