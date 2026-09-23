@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { after, before, beforeEach, test } from "node:test";
 import type { ChildProcess } from "node:child_process";
+import { Pool } from "pg";
 import { ApiClient, startApi, stopApi } from "../support/api.js";
-import { resetTestDatabase } from "../support/database.js";
+import { resetTestDatabase, testDatabaseUrl } from "../support/database.js";
 
 const leoId = "33333333-3333-3333-3333-333333333333";
 let api: ChildProcess;
@@ -122,4 +123,48 @@ test("leaving transfers ownership when another caregiver exists, while an accoun
     204,
   );
   assert.equal((await solo.request("/api/me")).status, 401);
+});
+
+test("deleting a child permanently cascades through its care data without deleting the owner account", async () => {
+  const alex = await signedIn("alex@nurture.local");
+  assert.equal((await alex.request(`/api/children/${leoId}`, { method: "DELETE" })).status, 204);
+
+  const pool = new Pool({ connectionString: testDatabaseUrl() });
+  try {
+    const remaining = await pool.query<{
+      children: number;
+      activities: number;
+      logs: number;
+      portions: number;
+      schedules: number;
+      memberships: number;
+      users: number;
+    }>(`
+      SELECT
+        (SELECT COUNT(*)::int FROM child WHERE id = $1) AS children,
+        (SELECT COUNT(*)::int FROM activity_definition WHERE child_id = $1) AS activities,
+        (SELECT COUNT(*)::int FROM activity_log WHERE child_id = $1) AS logs,
+        (SELECT COUNT(*)::int
+           FROM feeding_portion AS portion
+           JOIN activity_log AS log ON log.id = portion.log_id
+          WHERE log.child_id = $1) AS portions,
+        (SELECT COUNT(*)::int
+           FROM activity_schedule AS schedule
+           JOIN activity_definition AS activity ON activity.id = schedule.activity_id
+          WHERE activity.child_id = $1) AS schedules,
+        (SELECT COUNT(*)::int FROM child_membership WHERE child_id = $1) AS memberships,
+        (SELECT COUNT(*)::int FROM app_user WHERE email = $2) AS users
+    `, [leoId, "alex@nurture.local"]);
+    assert.deepEqual(remaining.rows[0], {
+      children: 0,
+      activities: 0,
+      logs: 0,
+      portions: 0,
+      schedules: 0,
+      memberships: 0,
+      users: 1,
+    });
+  } finally {
+    await pool.end();
+  }
 });

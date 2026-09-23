@@ -9,6 +9,40 @@ import { usableIntervals } from "./analytics.js";
 import { pool } from "./database.js";
 
 type Session = { userId: string };
+const customActivityIcons = new Set([
+  "heart-pulse", "stethoscope", "pill", "syringe", "thermometer", "bath", "bed", "baby",
+  "milk", "apple", "sun", "moon", "footprints", "book", "music", "sparkles",
+]);
+type ActivityFieldInput = {
+  id?: string;
+  key: string;
+  label: string;
+  type: "text" | "number" | "boolean" | "select" | "duration";
+  unit?: string | null;
+  options?: string[];
+  booleanTrueLabel?: string | null;
+  booleanFalseLabel?: string | null;
+  metrics?: string[];
+};
+function activityFieldConfiguration(field: ActivityFieldInput) {
+  if (
+    !field.key ||
+    !field.label.trim() ||
+    !["text", "number", "boolean", "select", "duration"].includes(field.type) ||
+    (field.type === "select" && !field.options?.length)
+  )
+    return null;
+  return {
+    key: field.key,
+    label: field.label.trim(),
+    type: field.type,
+    unit: field.type === "number" || field.type === "duration" ? field.unit?.trim() || null : null,
+    options: field.type === "select" ? field.options : [],
+    booleanTrueLabel: field.type === "boolean" ? field.booleanTrueLabel?.trim() || null : null,
+    booleanFalseLabel: field.type === "boolean" ? field.booleanFalseLabel?.trim() || null : null,
+    metrics: field.metrics ?? [],
+  };
+}
 const port = Number(process.env.PORT ?? 3001);
 const secret = process.env.JWT_SECRET ?? "development-only-secret-change-me";
 const version = process.env.APP_VERSION ?? "development";
@@ -657,7 +691,7 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
   }
   const [timeline, insightPreference, activities, fields, schedules, gaps, analyticsRows] = await Promise.all([
     pool.query(
-      `SELECT log.id, log.activity_id, log.event_time, log.event_timezone, log.field_values, log.note, log.created_at, log.created_by AS created_by_id, activity.name AS activity_name, activity.kind, activity.color, COALESCE(author.display_name, 'Deleted caregiver') AS created_by, COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions, comment_preview.comment_count, comment_preview.first_comment, comment_preview.first_comment_author FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id LEFT JOIN app_user AS author ON author.id = log.created_by LEFT JOIN LATERAL (SELECT COUNT(*)::int AS comment_count, (array_agg(comment.body ORDER BY comment.created_at, comment.id))[1] AS first_comment, (array_agg(comment_author.display_name ORDER BY comment.created_at, comment.id))[1] AS first_comment_author FROM log_comment AS comment JOIN app_user AS comment_author ON comment_author.id = comment.created_by WHERE comment.log_id = log.id) AS comment_preview ON true WHERE log.child_id = $1 ORDER BY log.event_time DESC LIMIT 100`,
+      `SELECT log.id, log.activity_id, log.event_time, log.event_timezone, log.field_values, log.note, log.created_at, log.created_by AS created_by_id, activity.name AS activity_name, activity.kind, activity.color, activity.icon, COALESCE(author.display_name, 'Deleted caregiver') AS created_by, COALESCE((SELECT jsonb_agg(jsonb_build_object('kind', portion.kind, 'delivery_method', portion.delivery_method, 'amount_ml', portion.amount_ml) ORDER BY portion.position) FROM feeding_portion AS portion WHERE portion.log_id = log.id), '[]'::jsonb) AS feeding_portions, comment_preview.comment_count, comment_preview.first_comment, comment_preview.first_comment_author FROM activity_log AS log JOIN activity_definition AS activity ON activity.id = log.activity_id LEFT JOIN app_user AS author ON author.id = log.created_by LEFT JOIN LATERAL (SELECT COUNT(*)::int AS comment_count, (array_agg(comment.body ORDER BY comment.created_at, comment.id))[1] AS first_comment, (array_agg(comment_author.display_name ORDER BY comment.created_at, comment.id))[1] AS first_comment_author FROM log_comment AS comment JOIN app_user AS comment_author ON comment_author.id = comment.created_by WHERE comment.log_id = log.id) AS comment_preview ON true WHERE log.child_id = $1 ORDER BY log.event_time DESC LIMIT 100`,
       [childId],
     ),
     pool.query(
@@ -665,17 +699,25 @@ app.get("/api/children/:childId/dashboard", async (request, response) => {
       [childId, session.userId],
     ),
     pool.query(
-      "SELECT id, name, kind, color FROM activity_definition WHERE child_id = $1 AND archived_at IS NULL ORDER BY created_at",
+      "SELECT id, name, kind, color, icon FROM activity_definition WHERE child_id = $1 AND archived_at IS NULL ORDER BY created_at",
       [childId],
     ),
     pool.query(
-      `SELECT field.id, field.activity_id, field.field_key, field.label, field.field_type, field.unit, field.options, field.dashboard_metrics FROM activity_field_definition AS field JOIN activity_definition AS activity ON activity.id = field.activity_id WHERE activity.child_id = $1 AND field.archived_at IS NULL ORDER BY field.id`,
+      `SELECT field.id, field.activity_id, field.field_key, field.label, field.field_type, field.unit, field.options, field.boolean_true_label, field.boolean_false_label, field.dashboard_metrics FROM activity_field_definition AS field JOIN activity_definition AS activity ON activity.id = field.activity_id WHERE activity.child_id = $1 AND field.archived_at IS NULL ORDER BY field.id`,
       [childId],
     ),
     pool.query(
-      `SELECT schedule.activity_id, schedule.kind, schedule.interval_minutes, schedule.scheduled_for
+      `SELECT schedule.activity_id, schedule.kind, schedule.interval_minutes, schedule.scheduled_for,
+         recent_log.event_time AS last_event_time
        FROM activity_schedule AS schedule
        JOIN activity_definition AS activity ON activity.id = schedule.activity_id
+       LEFT JOIN LATERAL (
+         SELECT log.event_time
+         FROM activity_log AS log
+         WHERE log.activity_id = activity.id
+         ORDER BY log.event_time DESC
+         LIMIT 1
+       ) AS recent_log ON true
        WHERE activity.child_id = $1
          AND activity.archived_at IS NULL
          AND schedule.completed_at IS NULL
@@ -1279,19 +1321,31 @@ app.post("/api/children/:childId/activities", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
   const { childId } = request.params;
-  const { name, color, fields } = request.body as {
+  const { name, color, icon = "heart-pulse", fields } = request.body as {
     name: string;
     color: string;
-    fields: {
-      key: string;
-      label: string;
-      type: string;
-      unit?: string;
-      metrics?: string[];
-    }[];
+    icon?: string;
+    fields: ActivityFieldInput[];
   };
   if (!/^#[\da-f]{6}$/i.test(color)) {
     response.status(400).json({ error: "Activity color must be a six-digit hex color" });
+    return;
+  }
+  if (!customActivityIcons.has(icon)) {
+    response.status(400).json({ error: "Activity icon is not supported" });
+    return;
+  }
+  if (!Array.isArray(fields)) {
+    response.status(400).json({ error: "Activity fields are required" });
+    return;
+  }
+  const configuredFields = fields.map(activityFieldConfiguration);
+  if (configuredFields.some((field) => field === null)) {
+    response.status(400).json({ error: "Each field needs a name and valid type-specific settings" });
+    return;
+  }
+  if (new Set(configuredFields.map((field) => field!.key)).size !== configuredFields.length) {
+    response.status(400).json({ error: "Each field needs a unique key" });
     return;
   }
   const access = await membership(childId, session.userId);
@@ -1303,19 +1357,22 @@ app.post("/api/children/:childId/activities", async (request, response) => {
   try {
     await client.query("BEGIN");
     const activity = await client.query<{ id: string }>(
-      "INSERT INTO activity_definition (child_id, name, kind, color) VALUES ($1, $2, 'custom', $3) RETURNING id",
-      [childId, name, color],
+      "INSERT INTO activity_definition (child_id, name, kind, color, icon) VALUES ($1, $2, 'custom', $3, $4) RETURNING id",
+      [childId, name, color, icon],
     );
-    for (const field of fields)
+    for (const field of configuredFields)
       await client.query(
-        "INSERT INTO activity_field_definition (activity_id, field_key, label, field_type, unit, dashboard_metrics) VALUES ($1, $2, $3, $4, $5, $6::jsonb)",
+        "INSERT INTO activity_field_definition (activity_id, field_key, label, field_type, unit, options, boolean_true_label, boolean_false_label, dashboard_metrics) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9::jsonb)",
         [
           activity.rows[0].id,
-          field.key,
-          field.label,
-          field.type,
-          field.unit ?? null,
-          JSON.stringify(field.metrics ?? []),
+          field!.key,
+          field!.label,
+          field!.type,
+          field!.unit,
+          JSON.stringify(field!.options),
+          field!.booleanTrueLabel,
+          field!.booleanFalseLabel,
+          JSON.stringify(field!.metrics),
         ],
       );
     await client.query("COMMIT");
@@ -1331,20 +1388,28 @@ app.post("/api/children/:childId/activities", async (request, response) => {
 app.post("/api/activities/:activityId/fields", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
-  const { fieldKey, label, fieldType, unit, options, metrics } =
+  const { fieldKey, label, fieldType, unit, options, booleanTrueLabel, booleanFalseLabel, metrics } =
     request.body as {
       fieldKey: string;
       label: string;
       fieldType: string;
       unit?: string;
       options?: string[];
+      booleanTrueLabel?: string;
+      booleanFalseLabel?: string;
       metrics?: string[];
     };
-  if (
-    !fieldKey ||
-    !label ||
-    !["text", "number", "boolean", "select", "duration"].includes(fieldType)
-  ) {
+  const field = activityFieldConfiguration({
+    key: fieldKey,
+    label,
+    type: fieldType as ActivityFieldInput["type"],
+    unit,
+    options,
+    booleanTrueLabel,
+    booleanFalseLabel,
+    metrics,
+  });
+  if (!field) {
     response
       .status(400)
       .json({ error: "A valid field name and type are required" });
@@ -1359,19 +1424,118 @@ app.post("/api/activities/:activityId/fields", async (request, response) => {
     return;
   }
   await pool.query(
-    "INSERT INTO activity_field_definition (activity_id, field_key, label, field_type, unit, options, dashboard_metrics) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb)",
+    "INSERT INTO activity_field_definition (activity_id, field_key, label, field_type, unit, options, boolean_true_label, boolean_false_label, dashboard_metrics) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9::jsonb)",
     [
       request.params.activityId,
-      fieldKey,
-      label,
-      fieldType,
-      unit ?? null,
-      JSON.stringify(options ?? []),
-      JSON.stringify(metrics ?? []),
+      field.key,
+      field.label,
+      field.type,
+      field.unit,
+      JSON.stringify(field.options),
+      field.booleanTrueLabel,
+      field.booleanFalseLabel,
+      JSON.stringify(field.metrics),
     ],
   );
   io.to(childRoom(activity.rows[0].child_id)).emit("timeline:changed");
   response.status(201).end();
+});
+app.put("/api/activities/:activityId/fields", async (request, response) => {
+  const session = requireSession(request, response);
+  if (!session) return;
+  const { fields } = request.body as { fields?: ActivityFieldInput[] };
+  if (!Array.isArray(fields)) {
+    response.status(400).json({ error: "Activity fields are required" });
+    return;
+  }
+  const configuredFields = fields.map(activityFieldConfiguration);
+  if (configuredFields.some((field) => field === null)) {
+    response.status(400).json({ error: "Each field needs a name and valid type-specific settings" });
+    return;
+  }
+  if (new Set(configuredFields.map((field) => field!.key)).size !== configuredFields.length) {
+    response.status(400).json({ error: "Each field needs a unique key" });
+    return;
+  }
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const activity = await client.query<{ child_id: string }>(
+      `SELECT activity.child_id
+       FROM activity_definition AS activity
+       JOIN child_membership AS membership ON membership.child_id = activity.child_id
+       WHERE activity.id = $1
+         AND activity.kind = 'custom'
+         AND activity.archived_at IS NULL
+         AND membership.user_id = $2
+         AND membership.role IN ('owner', 'care_manager')`,
+      [request.params.activityId, session.userId],
+    );
+    if (activity.rowCount !== 1) {
+      await client.query("ROLLBACK");
+      response.status(403).json({ error: "Owner or care manager access is required" });
+      return;
+    }
+    const activeFieldIds: string[] = [];
+    for (const [index, field] of configuredFields.entries()) {
+      const input = fields[index];
+      if (input.id) {
+        const updated = await client.query<{ id: string }>(
+          `UPDATE activity_field_definition
+           SET label = $1, field_type = $2, unit = $3, options = $4::jsonb,
+               boolean_true_label = $5, boolean_false_label = $6, dashboard_metrics = $7::jsonb
+           WHERE id = $8 AND activity_id = $9 AND archived_at IS NULL
+           RETURNING id`,
+          [
+            field!.label,
+            field!.type,
+            field!.unit,
+            JSON.stringify(field!.options),
+            field!.booleanTrueLabel,
+            field!.booleanFalseLabel,
+            JSON.stringify(field!.metrics),
+            input.id,
+            request.params.activityId,
+          ],
+        );
+        if (updated.rowCount !== 1) throw new Error("Activity field is not available");
+        activeFieldIds.push(updated.rows[0].id);
+      } else {
+        const inserted = await client.query<{ id: string }>(
+          `INSERT INTO activity_field_definition
+             (activity_id, field_key, label, field_type, unit, options, boolean_true_label, boolean_false_label, dashboard_metrics)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9::jsonb)
+           RETURNING id`,
+          [
+            request.params.activityId,
+            field!.key,
+            field!.label,
+            field!.type,
+            field!.unit,
+            JSON.stringify(field!.options),
+            field!.booleanTrueLabel,
+            field!.booleanFalseLabel,
+            JSON.stringify(field!.metrics),
+          ],
+        );
+        activeFieldIds.push(inserted.rows[0].id);
+      }
+    }
+    await client.query(
+      activeFieldIds.length
+        ? "UPDATE activity_field_definition SET archived_at = now() WHERE activity_id = $1 AND archived_at IS NULL AND NOT (id = ANY($2::uuid[]))"
+        : "UPDATE activity_field_definition SET archived_at = now() WHERE activity_id = $1 AND archived_at IS NULL",
+      activeFieldIds.length ? [request.params.activityId, activeFieldIds] : [request.params.activityId],
+    );
+    await client.query("COMMIT");
+    io.to(childRoom(activity.rows[0].child_id)).emit("timeline:changed");
+    response.status(204).end();
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 });
 app.delete("/api/activities/:activityId", async (request, response) => {
   const session = requireSession(request, response);
@@ -1393,22 +1557,22 @@ app.delete("/api/activities/:activityId", async (request, response) => {
 app.put("/api/activities/:activityId", async (request, response) => {
   const session = requireSession(request, response);
   if (!session) return;
-  const { name, color } = request.body as { name: string; color: string };
-  if (!name.trim() || !/^#[\da-f]{6}$/i.test(color)) {
+  const { name, color, icon } = request.body as { name: string; color: string; icon?: string };
+  if (!name.trim() || !/^#[\da-f]{6}$/i.test(color) || (icon !== undefined && !customActivityIcons.has(icon))) {
     response.status(400).json({ error: "Activity name and a six-digit hex color are required" });
     return;
   }
   const updated = await pool.query<{ child_id: string }>(
     `UPDATE activity_definition AS activity
-     SET name = $1, color = $2
+     SET name = $1, color = $2, icon = COALESCE($3, activity.icon)
      FROM child_membership AS membership
-     WHERE activity.id = $3
+       WHERE activity.id = $4
        AND membership.child_id = activity.child_id
-       AND membership.user_id = $4
+       AND membership.user_id = $5
        AND membership.role IN ('owner', 'care_manager')
        AND activity.archived_at IS NULL
      RETURNING activity.child_id`,
-    [name.trim(), color, request.params.activityId, session.userId],
+    [name.trim(), color, icon ?? null, request.params.activityId, session.userId],
   );
   if (updated.rowCount !== 1) {
     response.status(403).json({ error: "Owner or care manager access is required" });
@@ -1462,7 +1626,16 @@ app.put("/api/activities/:activityId/schedule", async (request, response) => {
     ],
   );
   if (updated.rowCount !== 1) {
-    response.status(404).json({ error: "Activity not found" });
+    const memberCanSeeActivity = await pool.query(
+      `SELECT 1
+       FROM activity_definition AS activity
+       JOIN child_membership AS membership ON membership.child_id = activity.child_id
+       WHERE activity.id = $1 AND activity.archived_at IS NULL AND membership.user_id = $2`,
+      [request.params.activityId, session.userId],
+    );
+    response
+      .status(memberCanSeeActivity.rowCount === 1 ? 403 : 404)
+      .json({ error: memberCanSeeActivity.rowCount === 1 ? "Owner or care manager access is required" : "Activity not found" });
     return;
   }
   io.to(childRoom(updated.rows[0].child_id)).emit("timeline:changed");

@@ -1,7 +1,11 @@
 import { FormEvent, Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { AnalyticsView } from "./AnalyticsView";
-import { ActivitiesRemindersPage } from "./ActivitiesRemindersPage";
+import {
+  ActivitiesRemindersPage,
+  type ActivityEditorInput,
+  type ActivityFieldDraft,
+} from "./ActivitiesRemindersPage";
 import { AccountDataPage } from "./AccountDataPage";
 import { CaregiversPage } from "./CaregiversPage";
 import { CarePausesPage, type CarePause } from "./CarePausesPage";
@@ -16,6 +20,7 @@ import { FeedmeBrand } from "./components/FeedmeBrand";
 import { HelpLegalPanel, PublicSite, type PublicPage } from "./PublicSite";
 import { SidebarAccount } from "./components/SidebarAccount";
 import { TimezoneSelect } from "./components/TimezoneSelect";
+import { ActivityIcon } from "./components/ActivityIcon";
 import { timeZoneLabel } from "./timezones";
 import { translate } from "./i18n";
 import {
@@ -24,7 +29,6 @@ import {
   ClipboardPlus,
   Clock3,
   Copy,
-  Droplets,
   FileDown,
   HeartPulse,
   CircleHelp,
@@ -36,7 +40,6 @@ import {
   Settings2,
   Sparkles,
   Trash2,
-  Utensils,
   UserMinus,
   Users,
   X,
@@ -49,17 +52,21 @@ type Field = {
   field_type: "text" | "number" | "boolean" | "select" | "duration";
   unit?: string;
   options: string[];
+  boolean_true_label?: string | null;
+  boolean_false_label?: string | null;
 };
 type Activity = {
   id: string;
   name: string;
   kind: "feeding" | "diaper" | "custom";
   color: string;
+  icon: string;
   fields: Field[];
   schedule: {
     kind: "interval" | "one_time";
     interval_minutes?: number;
     scheduled_for?: string;
+    last_event_time?: string | null;
   } | null;
 };
 type Event = {
@@ -71,6 +78,7 @@ type Event = {
   activity_name: string;
   kind: Activity["kind"];
   color: string;
+  icon: string;
   created_by: string;
   created_by_id: string | null;
   feeding_portions: FeedingPortion[];
@@ -177,14 +185,6 @@ function usePageScrollLock(locked: boolean) {
     };
   }, [locked]);
 }
-const icon = (kind: Activity["kind"]) =>
-  kind === "feeding" ? (
-    <Utensils size={17} />
-  ) : kind === "diaper" ? (
-    <Droplets size={17} />
-  ) : (
-    <HeartPulse size={17} />
-  );
 const accessibleIconColor = (backgroundColor: string) => {
   const value = /^#([\da-f]{6})$/i.exec(backgroundColor)?.[1];
   if (!value) return "#000";
@@ -237,7 +237,7 @@ function eventDetail(
       const label = t(field?.label ?? humanizeFieldKey(key));
       const displayValue =
         typeof value === "boolean"
-          ? t(value ? "Yes" : "No")
+          ? t(value ? field?.boolean_true_label ?? "Yes" : field?.boolean_false_label ?? "No")
           : t(String(value));
       return `${label}: ${displayValue}`;
     });
@@ -756,31 +756,36 @@ export default function App() {
     setLogOpen(false);
     await loadDash(child.id);
   }
-  async function createActivity(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function activityFieldPayloads(fields: ActivityFieldDraft[]) {
+    const keys = new Set<string>();
+    return fields.map((field) => {
+      const baseKey = field.field_key ?? (field.label.toLowerCase().replaceAll(" ", "_") || "field");
+      let key = baseKey;
+      let suffix = 2;
+      while (keys.has(key)) key = `${baseKey}_${suffix++}`;
+      keys.add(key);
+      return {
+        ...(field.id ? { id: field.id } : {}),
+        key,
+        label: field.label,
+        type: field.field_type,
+        unit: field.unit || null,
+        options: field.options,
+        booleanTrueLabel: field.boolean_true_label || null,
+        booleanFalseLabel: field.boolean_false_label || null,
+        metrics: ["average", "trend"],
+      };
+    });
+  }
+  async function createActivity(input: ActivityEditorInput) {
     if (!child) return;
-    const form = new FormData(event.currentTarget);
-    const field = String(form.get("field") ?? "");
     await api(`/api/children/${child.id}/activities`, {
       method: "POST",
       body: JSON.stringify({
-        name: form.get("name"),
+        name: input.name,
         color: "#8b68c8",
-        fields: field
-          ? [
-              {
-                key: field.toLowerCase().replaceAll(" ", "_"),
-                label: field,
-                type: form.get("type"),
-                unit: form.get("unit") || null,
-                options: String(form.get("options") ?? "")
-                  .split(",")
-                  .map((value) => value.trim())
-                  .filter(Boolean),
-                metrics: ["average", "trend"],
-              },
-            ]
-          : [],
+        icon: input.icon,
+        fields: activityFieldPayloads(input.fields ?? []),
       }),
     });
     setPanel(null);
@@ -799,39 +804,21 @@ export default function App() {
     await api(`/api/activities/${id}`, { method: "DELETE" });
     await loadDash(child.id);
   }
-  async function updateActivity(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!child) return;
-    const form = new FormData(event.currentTarget);
-    await api(`/api/activities/${form.get("activityId")}`, {
+  async function updateActivity(input: ActivityEditorInput) {
+    if (!child || !input.id || !input.color) return;
+    await api(`/api/activities/${input.id}`, {
       method: "PUT",
       body: JSON.stringify({
-        name: form.get("name"),
-        color: form.get("color"),
+        name: input.name,
+        color: input.color,
+        icon: input.icon,
       }),
     });
-    await loadDash(child.id);
-  }
-  async function addField(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!child) return;
-    const form = new FormData(event.currentTarget);
-    const field = String(form.get("field"));
-    await api(`/api/activities/${form.get("activityId")}/fields`, {
-      method: "POST",
-      body: JSON.stringify({
-        fieldKey: field.toLowerCase().replaceAll(" ", "_"),
-        label: field,
-        fieldType: form.get("type"),
-        unit: form.get("unit") || null,
-        options: String(form.get("options") ?? "")
-          .split(",")
-          .map((value) => value.trim())
-          .filter(Boolean),
-        metrics: ["average", "trend"],
-      }),
-    });
-    setPanel(null);
+    if (input.fields)
+      await api(`/api/activities/${input.id}/fields`, {
+        method: "PUT",
+        body: JSON.stringify({ fields: activityFieldPayloads(input.fields) }),
+      });
     await loadDash(child.id);
   }
   async function saveActivitySchedule(
@@ -1049,7 +1036,10 @@ export default function App() {
         locale={locale}
         onLocale={setLocale}
         onNavigate={navigate}
-        onSignIn={() => navigate(user ? "/children" : "/sign-in")}
+        onSignIn={() => {
+          const invite = new URLSearchParams(location.search).get("invite");
+          navigate(user ? "/children" : invite ? `/sign-in?invite=${encodeURIComponent(invite)}` : "/sign-in");
+        }}
         accountName={user?.display_name}
         onSettings={user ? () => navigate("/account/privacy") : undefined}
         onSignOut={user ? signOut : undefined}
@@ -1201,22 +1191,32 @@ export default function App() {
     );
   if (!child || homeOpen)
     return (
-      <Home
-        user={user}
-        error={error}
-        createChildOpen={createChildOpen}
-        onCreate={openCreateChild}
-        onCloseCreate={() => setCreateChildOpen(false)}
-        onCreateChild={createChild}
-        languageOpen={languageOpen}
-        onOpenLanguage={() => setLanguageOpen(true)}
-        onCloseLanguage={() => setLanguageOpen(false)}
-        onLocale={setLocale}
-        onSignOut={signOut}
-        onHome={() => navigate("/")}
-        onPrivacyData={() => navigate("/account/privacy")}
-        onNavigateLegal={navigate}
-      />
+      <>
+        <Home
+          user={user}
+          error={error}
+          createChildOpen={createChildOpen}
+          onCreate={openCreateChild}
+          onCloseCreate={() => setCreateChildOpen(false)}
+          onCreateChild={createChild}
+          languageOpen={languageOpen}
+          onOpenLanguage={() => setLanguageOpen(true)}
+          onCloseLanguage={() => setLanguageOpen(false)}
+          onLocale={setLocale}
+          onSignOut={signOut}
+          onHome={() => navigate("/")}
+          onPrivacyData={() => navigate("/account/privacy")}
+          onNavigateLegal={navigate}
+        />
+        {invitePreview && (
+          <InvitationPreviewModal
+            locale={user.locale}
+            invitation={invitePreview}
+            onAccept={acceptInvite}
+            onClose={clearInvite}
+          />
+        )}
+      </>
     );
   if (!dash)
     return <div className="loading-screen">{t("Loading family space…")}</div>;
@@ -1304,7 +1304,6 @@ export default function App() {
             onCreateActivity={createActivity}
             onUpdateActivity={updateActivity}
             onArchiveActivity={archiveActivity}
-            onAddField={addField}
             onSaveSchedule={saveActivitySchedule}
             onDeleteSchedule={deleteActivitySchedule}
           />
@@ -1403,6 +1402,7 @@ export default function App() {
         <UpcomingList
           activities={dash.activities}
           locale={user.locale}
+          formatExpectedTime={summaryTime}
           canManage={canManage}
           onLogActivity={write ? (id) => {
             setActivityId(id);
@@ -1545,7 +1545,7 @@ export default function App() {
                           color: accessibleIconColor(event.color),
                         }}
                       >
-                        {icon(event.kind)}
+                        <ActivityIcon kind={event.kind} icon={event.icon} />
                       </i>
                     </span>
                     <div className="event-content">
@@ -1915,6 +1915,7 @@ function InvitationPreviewModal({
 function UpcomingList({
   activities,
   locale,
+  formatExpectedTime,
   canManage,
   onOpen,
   onComplete,
@@ -1923,6 +1924,7 @@ function UpcomingList({
 }: {
   activities: Activity[];
   locale: User["locale"];
+  formatExpectedTime: (value: string | Date) => string;
   canManage: boolean;
   onOpen: () => void;
   onComplete: (activity: Activity) => void;
@@ -1950,15 +1952,18 @@ function UpcomingList({
             const description =
               schedule.kind === "one_time" && schedule.scheduled_for
                 ? clock(schedule.scheduled_for, locale)
-                : `${t("Every")} ${Math.round((schedule.interval_minutes ?? 0) / 60)} ${t("hours after activity")}`;
+                : !schedule.last_event_time
+                  ? t("Record the first care to set the next expected time.")
+                  : `${t("Next expected")}: ${formatExpectedTime(
+                      new Date(
+                        new Date(schedule.last_event_time).getTime() +
+                          (schedule.interval_minutes ?? 0) * 60_000,
+                      ),
+                    )}`;
             return (
             <article className="due-item" key={activity.id}>
               <span className="due-icon">
-                {schedule.kind === "one_time" ? (
-                  <HeartPulse size={17} />
-                ) : (
-                  <Utensils size={17} />
-                )}
+                <ActivityIcon kind={activity.kind} icon={activity.icon} />
               </span>
               <div>
                 <p className="due-item-title">
@@ -2082,7 +2087,7 @@ function LogModal({
                   color: accessibleIconColor(item.color),
                 }}
               >
-                {icon(item.kind)}
+                <ActivityIcon kind={item.kind} icon={item.icon} />
               </i>
               {t(item.name)}
             </button>
@@ -2203,17 +2208,20 @@ function LogModal({
               {t(field.label)}
               {field.unit ? ` (${field.unit})` : ""}
               {field.field_type === "boolean" ? (
-                <input
-                  type="checkbox"
-                  checked={Boolean(values[field.field_key])}
-                  disabled={!editable}
-                  onChange={(event) =>
-                    onValues({
-                      ...values,
-                      [field.field_key]: event.target.checked,
-                    })
-                  }
-                />
+                <span className="boolean-field-input">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(values[field.field_key])}
+                    disabled={!editable}
+                    onChange={(event) =>
+                      onValues({
+                        ...values,
+                        [field.field_key]: event.target.checked,
+                      })
+                    }
+                  />
+                  <span>{t(values[field.field_key] ? field.boolean_true_label ?? "Yes" : field.boolean_false_label ?? "No")}</span>
+                </span>
               ) : field.field_type === "select" && field.options.length ? (
                 <select
                   value={String(values[field.field_key] ?? "")}

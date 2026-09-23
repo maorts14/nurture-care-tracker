@@ -16,5 +16,6 @@ export interface Activity {
   name: string;
   kind: ActivityKind;
   color: string;
+  icon: string;
   intervalHours?: number;
 }

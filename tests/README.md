@@ -29,8 +29,8 @@ The API suite recreates the schema and seed data before each feature test file. 
 | Area | PostgreSQL integration coverage | Browser coverage |
 | --- | --- | --- |
 | Authentication and account data | Sign-in, registration, sign-out, locale, export, deletion, Google configuration | Registration/onboarding and deletion confirmation |
-| Children and caregiver access | Child lifecycle, memberships, role changes, invitations, ownership transfer | Caregiver role management |
+| Children and caregiver access | Child lifecycle, permanent child-data cascade, memberships, role changes, invitations, ownership transfer | Caregiver role management and link invitation acceptance from landing page through registration |
 | Timeline | Logs, multi-portion feeding, editing permissions, deletion, comments, timing intervals | Log creation, record editor, comment creation, activity filtering |
-| Activities & reminders | Custom activities, fields, activity-owned schedules, notes | Activity creation, recurring and one-time schedules |
+| Activities & reminders | Custom activities, fields, activity-owned schedules, notes, caregiver administration boundaries | Activity creation, recurring and one-time schedules |
 | Care pauses and Insights | Pause CRUD, affected-day averages, history flags, viewer restrictions, report export | Pause management, Insights selection, history-export options |
 | Public experience | Public route behavior is static; language state is covered through the UI | Landing-page language selection |

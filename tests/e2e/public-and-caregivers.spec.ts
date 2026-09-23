@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
+import { ApiClient } from "../support/api.js";
 import { resetTestDatabase } from "../support/database.js";
+
+const leoId = "33333333-3333-3333-3333-333333333333";
 
 async function signInAsAlex(page: import("@playwright/test").Page) {
   await page.goto("/sign-in");
@@ -18,6 +21,31 @@ test("a signed-out visitor can change language from the landing page", async ({ 
   await languagePicker.getByRole("button", { name: "עברית" }).click();
   await expect(page.getByRole("button", { name: "שפה" })).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+});
+
+test("a link invitation survives the landing page and lets a new caregiver join", async ({ page }) => {
+  const owner = new ApiClient();
+  await owner.signIn("alex@nurture.local", "nurture-demo");
+  const invitationResponse = await owner.request(`/api/children/${leoId}/invitations`, {
+    method: "POST",
+    body: JSON.stringify({ role: "caregiver" }),
+  });
+  expect(invitationResponse.status).toBe(201);
+  const invitation = (await invitationResponse.json()) as { token: string };
+
+  await page.goto(`/?invite=${invitation.token}`);
+  await page.getByRole("button", { name: "Enter your care space" }).click();
+  await expect(page.getByText("You’re invited to join the care space for Leo.")).toBeVisible();
+  await page.getByRole("button", { name: "Need an account? Register" }).click();
+  await page.getByLabel("Name").fill("Invited Caregiver");
+  await page.getByLabel("Email").fill("invited-caregiver@test.local");
+  await page.getByLabel("Password").fill("test-password");
+  await page.getByRole("button", { name: "Create account" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Join a child's care space" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Join care space" }).click();
+  await expect(page.getByRole("heading", { name: /Leo.?s timeline/ })).toBeVisible();
 });
 
 test("an owner can open caregiver management and change a caregiver's role", async ({ page }) => {

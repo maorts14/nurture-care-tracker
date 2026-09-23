@@ -89,6 +89,7 @@ test("custom activities and their fields are managed by owners or care managers"
     body: JSON.stringify({
       name: "Medicine",
       color: "#1d9d83",
+      icon: "stethoscope",
       fields: [{ key: "dose", label: "Dose", type: "number", unit: "ml", metrics: ["sum"] }],
     }),
   });
@@ -103,19 +104,33 @@ test("custom activities and their fields are managed by owners or care managers"
   assert.equal(
     (await owner.request(`/api/activities/${activityId}`, {
       method: "PUT",
-      body: JSON.stringify({ name: "Medication", color: "#198f7a" }),
+      body: JSON.stringify({ name: "Medication", color: "#198f7a", icon: "pill" }),
     })).status,
     204,
   );
 
   const dashboard = (await (await owner.request(`/api/children/${leoId}/dashboard`)).json()) as {
-    activities: Array<{ id: string; name: string; fields: Array<{ field_key: string }> }>;
+    activities: Array<{
+      id: string;
+      name: string;
+      fields: Array<{
+        id: string;
+        field_key: string;
+        label: string;
+        field_type: string;
+        unit: string | null;
+        options: string[];
+        boolean_true_label: string | null;
+        boolean_false_label: string | null;
+      }>;
+    }>;
   };
   assert.deepEqual(dashboard.activities.find((activity) => activity.id === activityId), {
     id: activityId,
     name: "Medication",
     kind: "custom",
     color: "#198f7a",
+    icon: "pill",
     fields: dashboard.activities.find((activity) => activity.id === activityId)!.fields,
     schedule: null,
   });
@@ -126,7 +141,134 @@ test("custom activities and their fields are managed by owners or care managers"
       .sort(),
     ["dose", "note"],
   );
+  const medication = dashboard.activities.find((activity) => activity.id === activityId)!;
+  assert.equal(
+    (await owner.request(`/api/children/${leoId}/logs`, {
+      method: "POST",
+      body: JSON.stringify({
+        activityId,
+        eventTime: "2026-09-22T09:00:00.000Z",
+        eventTimezone: "Asia/Jerusalem",
+        fieldValues: { dose: 2.5, note: "After breakfast" },
+      }),
+    })).status,
+    201,
+  );
+  const savedFields = await owner.request(`/api/activities/${activityId}/fields`, {
+    method: "PUT",
+    body: JSON.stringify({
+      fields: [
+        {
+          id: medication.fields.find((field) => field.field_key === "dose")!.id,
+          key: "dose",
+          label: "Dose",
+          type: "number",
+          unit: "ml",
+          options: ["not applicable"],
+          metrics: ["average"],
+        },
+        {
+          id: medication.fields.find((field) => field.field_key === "note")!.id,
+          key: "note",
+          label: "How given",
+          type: "select",
+          unit: "ml",
+          options: ["Drops", "Tablet"],
+          metrics: [],
+        },
+        {
+          key: "taken",
+          label: "Taken",
+          type: "boolean",
+          options: ["not applicable"],
+          booleanTrueLabel: "Taken",
+          booleanFalseLabel: "Skipped",
+          metrics: [],
+        },
+      ],
+    }),
+  });
+  assert.equal(savedFields.status, 204);
+  const afterFieldEdit = (await (await owner.request(`/api/children/${leoId}/dashboard`)).json()) as {
+    timeline: Array<{ activity_id: string; field_values: Record<string, unknown> }>;
+    activities: typeof dashboard.activities;
+  };
+  const editedFields = afterFieldEdit.activities.find((activity) => activity.id === activityId)!.fields;
+  assert.deepEqual(
+    editedFields.map((field) => ({
+      key: field.field_key,
+      label: field.label,
+      type: field.field_type,
+      unit: field.unit,
+      options: field.options,
+      yes: field.boolean_true_label,
+      no: field.boolean_false_label,
+    })).sort((left, right) => left.key.localeCompare(right.key)),
+    [
+      { key: "dose", label: "Dose", type: "number", unit: "ml", options: [], yes: null, no: null },
+      { key: "note", label: "How given", type: "select", unit: null, options: ["Drops", "Tablet"], yes: null, no: null },
+      { key: "taken", label: "Taken", type: "boolean", unit: null, options: [], yes: "Taken", no: "Skipped" },
+    ],
+  );
+  assert.deepEqual(
+    afterFieldEdit.timeline.find((log) => log.activity_id === activityId)!.field_values,
+    { dose: 2.5, note: "After breakfast" },
+  );
+  assert.equal(
+    (await owner.request(`/api/activities/${activityId}/fields`, {
+      method: "PUT",
+      body: JSON.stringify({ fields: [] }),
+    })).status,
+    204,
+  );
+  const afterRemoval = (await (await owner.request(`/api/children/${leoId}/dashboard`)).json()) as {
+    timeline: Array<{ activity_id: string; field_values: Record<string, unknown> }>;
+    activities: typeof dashboard.activities;
+  };
+  assert.deepEqual(afterRemoval.activities.find((activity) => activity.id === activityId)!.fields, []);
+  assert.deepEqual(
+    afterRemoval.timeline.find((log) => log.activity_id === activityId)!.field_values,
+    { dose: 2.5, note: "After breakfast" },
+  );
   assert.equal((await owner.request(`/api/activities/${activityId}`, { method: "DELETE" })).status, 204);
+});
+
+test("caregivers can log care but cannot administer activities or reminders", async () => {
+  const owner = await alex();
+  const dashboard = (await (await owner.request(`/api/children/${leoId}/dashboard`)).json()) as {
+    activities: Array<{ id: string; kind: string }>;
+  };
+  const feedingId = dashboard.activities.find((activity) => activity.kind === "feeding")!.id;
+  const caregiver = new ApiClient();
+  await caregiver.signIn("maya@nurture.local", "nurture-demo");
+
+  assert.equal(
+    (await caregiver.request(`/api/children/${leoId}/activities`, {
+      method: "POST",
+      body: JSON.stringify({ name: "Medicine", color: "#1d9d83", fields: [] }),
+    })).status,
+    403,
+  );
+  assert.equal(
+    (await caregiver.request(`/api/activities/${feedingId}/schedule`, {
+      method: "PUT",
+      body: JSON.stringify({ kind: "interval", intervalMinutes: 180 }),
+    })).status,
+    403,
+  );
+  assert.equal(
+    (await caregiver.request(`/api/children/${leoId}/logs`, {
+      method: "POST",
+      body: JSON.stringify({
+        activityId: feedingId,
+        eventTime: "2026-09-22T09:00:00.000Z",
+        eventTimezone: "Asia/Jerusalem",
+        fieldValues: {},
+        portions: [{ kind: "formula", deliveryMethod: "bottle", amountMl: 90 }],
+      }),
+    })).status,
+    201,
+  );
 });
 
 test("activity schedules, notes, and exports keep their intended access and data shape", async () => {
@@ -148,6 +290,19 @@ test("activity schedules, notes, and exports keep their intended access and data
     })).status,
     201,
   );
+  const beforeFirstVitaminRecord = (await (await owner.request(`/api/children/${leoId}/dashboard`)).json()) as {
+    activities: Array<{
+      id: string;
+      schedule: { kind: string; interval_minutes: number; last_event_time: string | null } | null;
+    }>;
+  };
+  assert.deepEqual(beforeFirstVitaminRecord.activities.find((activity) => activity.id === vitamin.id)?.schedule, {
+    activity_id: vitamin.id,
+    kind: "interval",
+    interval_minutes: 480,
+    scheduled_for: null,
+    last_event_time: null,
+  });
   assert.equal(
     (await owner.request(`/api/activities/${vitamin.id}/schedule`, {
       method: "PUT",

@@ -30,12 +30,17 @@ test("a caregiver manages activity-owned reminders", async ({ page }) => {
   await scheduleDialog.getByLabel("Interval hours").fill("8");
   await scheduleDialog.getByRole("button", { name: "Save reminder" }).click();
   await expect(vitamin.getByText("Every 8 hours after activity")).toBeVisible();
+  await page.getByRole("button", { name: "Timeline" }).first().click();
+  await expect(page.locator(".due-item", { hasText: "Vitamin" })).toContainText(
+    "Record the first care to set the next expected time.",
+  );
 });
 
 test("recurring reminders log care while one-time reminders open a populated care form", async ({ page }) => {
   await signInAsAlex(page);
 
   await expect(page.getByRole("button", { name: "Log care Feeding" })).toBeVisible();
+  await expect(page.locator(".due-item", { hasText: "Feeding" })).toContainText("Next expected:");
   await expect(page.getByRole("button", { name: "Mark complete Feeding" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Mark complete Doctor" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Log care Doctor" })).toHaveCount(0);

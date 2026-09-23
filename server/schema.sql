@@ -57,6 +57,7 @@ CREATE TABLE activity_definition (
   name TEXT NOT NULL,
   kind activity_kind NOT NULL DEFAULT 'custom',
   color TEXT NOT NULL,
+  icon TEXT NOT NULL DEFAULT 'heart-pulse',
   archived_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -69,6 +70,8 @@ CREATE TABLE activity_field_definition (
   field_type TEXT NOT NULL CHECK (field_type IN ('text', 'number', 'boolean', 'select', 'duration')),
   unit TEXT,
   options JSONB NOT NULL DEFAULT '[]',
+  boolean_true_label TEXT,
+  boolean_false_label TEXT,
   dashboard_metrics JSONB NOT NULL DEFAULT '[]',
   archived_at TIMESTAMPTZ,
   UNIQUE (activity_id, field_key)

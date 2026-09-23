@@ -2387,10 +2387,13 @@ nav em {
   gap: 16px;
   padding: 16px 0;
 }
-.activity-schedule-dot {
-  width: 11px;
-  height: 11px;
+.activity-schedule-icon {
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
   border-radius: 50%;
+  color: #fff;
 }
 .activity-schedule-summary h2,
 .activity-schedule-status strong,
@@ -2456,9 +2459,131 @@ nav em {
 .activity-editor-modal .modal-actions .submit {
   flex: 1;
 }
-.activity-field-form {
-  padding-top: 4px;
+.activity-icon-picker {
+  min-width: 0;
+  margin: 4px 0 18px;
+  padding: 0;
+  border: 0;
+}
+.activity-icon-picker legend {
+  margin-bottom: 9px;
+  color: #544d46;
+  font-weight: 650;
+}
+.activity-icon-picker [role="radiogroup"] {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 7px;
+}
+.activity-icon-picker button {
+  display: grid;
+  width: 100%;
+  aspect-ratio: 1;
+  padding: 0;
+  place-items: center;
+  border: 1px solid #e2ddd5;
+  border-radius: 10px;
+  color: #706960;
+  background: #fffdf9;
+  transition: border-color 150ms ease, color 150ms ease, background 150ms ease, transform 150ms ease;
+}
+.activity-icon-picker button:hover,
+.activity-icon-picker button:focus-visible {
+  border-color: #c96a52;
+  color: #b85543;
+}
+.activity-icon-picker button.selected {
+  border-color: #f0644d;
+  color: #fff;
+  background: #f0644d;
+  box-shadow: 0 5px 13px rgb(240 100 77 / 20%);
+}
+.activity-icon-picker button:active {
+  transform: scale(.94);
+}
+.activity-fields-editor {
+  min-width: 0;
+  margin: 26px 0 0;
+  padding: 22px 0 0;
+  border: 0;
   border-top: 1px solid #e8e1d8;
+}
+.activity-fields-editor-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  color: #302c28;
+  font-size: 17px;
+  font-weight: 700;
+}
+.activity-fields-editor-title .text-button {
+  min-height: 32px;
+  margin-inline-end: -6px;
+}
+.activity-fields-editor > p {
+  margin: 6px 0 16px;
+  color: var(--text-muted);
+  font-size: calc(13px + var(--ui-text-scale));
+}
+.activity-field-editor {
+  display: grid;
+  gap: 14px;
+  margin: 16px 0 0;
+  padding: 16px 14px;
+  border: 1px solid #e5ded6;
+  border-radius: 14px;
+  background: #fffdf9;
+}
+.activity-field-editor-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+}
+.activity-field-editor-heading strong {
+  font-size: 14px;
+}
+.activity-field-editor-heading .more {
+  width: 32px;
+  height: 32px;
+}
+.activity-field-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.activity-field-editor > label,
+.activity-field-editor-grid > label {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  color: #544d46;
+  font-size: calc(13px + var(--ui-text-scale));
+  font-weight: 650;
+}
+.log-modal .activity-field-editor input,
+.log-modal .activity-field-editor select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+}
+.boolean-field-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+.boolean-field-input input {
+  width: 19px;
+  height: 19px;
+}
+@media (max-width: 520px) {
+  .activity-field-editor-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
 }
 .activity-schedule-modal-copy {
   margin: -14px 0 18px;
