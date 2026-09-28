@@ -87,7 +87,7 @@ export function AccountDataPage({
           <p className="eyebrow">{t("ACCOUNT DELETION")}</p>
           <h2>{t("Delete your account")}</h2>
           <p>
-            {t("This removes your Feedme profile. Shared care records stay available without your identity; your notes, comments, and invitations are removed. A sole-owner child space is deleted, while a shared space transfers to its earliest caregiver.")}
+            {t("This removes your Feedme profile. Shared care records stay available without your identity; your notes, comments, and invitations are removed. A sole-owner child space is deleted, while a shared space transfers to its earliest caregiver. Your live account is removed immediately; recovery copies may retain data until their retention period expires.")}
           </p>
           <button className="text-button danger-text" onClick={() => setDeleteOpen(true)}>
             {t("Delete account")}
