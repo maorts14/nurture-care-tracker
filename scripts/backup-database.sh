@@ -6,6 +6,7 @@ cd "$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 set -a
 . ./.env
 set +a
+: "${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY must be set}"
 
 backup_dir="${BACKUP_DIR:-/opt/nurture/backups}"
 timestamp="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
@@ -18,8 +19,8 @@ trap 'rm -f "$temporary_file"' EXIT
 docker compose --env-file .env -f docker-compose.prod.yml exec -T db \
   pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" \
   | gzip \
-  | docker compose --env-file .env -f docker-compose.prod.yml exec -T api \
-    node server/backup-crypto.mjs encrypt > "$temporary_file"
+  | docker compose --env-file .env -f docker-compose.prod.yml exec -T \
+    -e BACKUP_ENCRYPTION_KEY api node server/backup-crypto.mjs encrypt > "$temporary_file"
 
 mv "$temporary_file" "$backup_file"
 trap - EXIT
