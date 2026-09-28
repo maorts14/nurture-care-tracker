@@ -294,7 +294,7 @@ const hebrew: Record<string, string> = {
   "Read privacy information": "קריאת מידע על פרטיות",
   "ACCOUNT DELETION": "מחיקת חשבון",
   "Delete your account": "מחיקת החשבון שלכם",
-  "This removes your Feedme profile. Shared care records stay available without your identity; your notes, comments, and invitations are removed. A sole-owner child space is deleted, while a shared space transfers to its earliest caregiver.": "פעולה זו מסירה את פרופיל Feedme שלכם. רשומות טיפול משותפות נשארות זמינות ללא הזהות שלכם; ההערות, התגובות וההזמנות שיצרתם יימחקו. מרחב ילד שבו אתם הבעלים היחיד יימחק, ובמרחב משותף הבעלות תעבור למטפל שהצטרף ראשון.",
+  "This removes your Feedme profile. Shared care records stay available without your identity; your notes, comments, and invitations are removed. A sole-owner child space is deleted, while a shared space transfers to its earliest caregiver. Your live account is removed immediately; recovery copies may retain data until their retention period expires.": "פעולה זו מסירה את פרופיל Feedme שלכם. רשומות טיפול משותפות נשארות זמינות ללא הזהות שלכם; ההערות, התגובות וההזמנות שיצרתם יימחקו. מרחב ילד שבו אתם הבעלים היחיד יימחק, ובמרחב משותף הבעלות תעבור למטפל שהצטרף ראשון. החשבון הפעיל שלכם יוסר מיד; עותקי שחזור עשויים לשמור נתונים עד תום תקופת השמירה שלהם.",
   "Delete account": "מחיקת חשבון",
   "PERMANENT ACTION": "פעולה קבועה",
   "Delete your Feedme account?": "למחוק את חשבון Feedme שלכם?",
