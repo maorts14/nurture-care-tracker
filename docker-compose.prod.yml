@@ -25,6 +25,7 @@ services:
       APP_URL: https://${APP_DOMAIN:?APP_DOMAIN must be set}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY must be set}
     depends_on:
       db:
         condition: service_healthy
@@ -33,6 +34,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 6
+    volumes:
+      - ${BACKUP_DIR:-/opt/nurture/backups}:/var/lib/feedme-backups:ro
 
   web:
     image: ${FEEDME_WEB_IMAGE:?FEEDME_WEB_IMAGE must be set}

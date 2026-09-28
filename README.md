@@ -108,11 +108,11 @@ docker compose --env-file .env -f docker-compose.prod.yml ps
 
 #### `scripts/backup-database.sh` — logical database backups
 
-OVH automated backups protect the VPS as a server-level recovery option. This script adds a database-specific backup: it runs PostgreSQL's `pg_dump` inside the live `db` container, compresses the SQL stream with `gzip`, and writes a file such as `nurture-2026-09-07T00-15-00Z.sql.gz` to `/opt/nurture/backups`.
+OVH automated backups protect the VPS as a server-level recovery option. This script adds a database-specific backup: it runs PostgreSQL's `pg_dump` inside the live `db` container, compresses the SQL stream with `gzip`, encrypts it with AES-256-GCM, and writes a file such as `nurture-2026-09-07T00-15-00Z.sql.gz.enc` to `/opt/nurture/backups`.
 
-The script loads the VPS `.env` only to know the database name and user; it does not print credentials. It then deletes dumps older than 14 days. The cron entry runs it daily at 03:15 UTC. The backup directory is intentionally protected with `chmod 700` because dumps contain all care logs, notes, and user accounts.
+The script loads the VPS `.env` for the database credentials and `BACKUP_ENCRYPTION_KEY`; it does not print either. It then deletes dumps older than 14 days. The cron entry runs it daily at 03:15 UTC. The backup directory is intentionally protected with `chmod 700`.
 
-This is a **logical** backup: it can be restored into PostgreSQL even when restoring a whole VM snapshot would be inconvenient. It is not off-site by itself, because the dump remains on the same VPS. For the first release, OVH's automated backup is the off-server recovery layer. If the app becomes important enough, the next upgrade should encrypt and copy these dumps to separate storage.
+This is a **logical** backup: it can be restored into PostgreSQL even when restoring a whole VM snapshot would be inconvenient. It is not off-site by itself, because the dump remains on the same VPS. Its encryption protects the archive if it is copied or accessed without the backup key; it does not crypto-erase one child from older backups, and it does not protect a whole-VPS snapshot that includes the VPS `.env`. For the first release, OVH's automated backup is the off-server recovery layer.
 
 #### `scripts/deploy.sh` — safe application updates
 
@@ -232,7 +232,15 @@ Add this line to run a backup daily at 03:15 UTC and retain 14 days of dumps:
 15 3 * * * /opt/nurture/scripts/backup-database.sh >> /opt/nurture/backups/backup.log 2>&1
 ```
 
-To restore a dump, stop the API and web services, then pipe the chosen dump into the `db` service. Practice this only against a non-production copy first.
+To restore a dump, stop the API and web services, decrypt the chosen archive with a temporary API container, then pipe it into the `db` service. Practice this only against a non-production copy first:
+
+```sh
+docker compose --env-file .env -f docker-compose.prod.yml run --rm -T api \
+  node server/backup-crypto.mjs decrypt /var/lib/feedme-backups/nurture-YYYY-MM-DDTHH-MM-SSZ.sql.gz.enc \
+  | gunzip \
+  | docker compose --env-file .env -f docker-compose.prod.yml exec -T db \
+    psql -U "$POSTGRES_USER" "$POSTGRES_DB"
+```
 
 ### Publishing and updating the deployed app
 
