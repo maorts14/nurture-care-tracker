@@ -1,17 +1,26 @@
-import { FormEvent, Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { AnalyticsView } from "./AnalyticsView";
+import {
+  ActivitiesRemindersPage,
+  type ActivityEditorInput,
+  type ActivityFieldDraft,
+} from "./ActivitiesRemindersPage";
+import { AccountDataPage } from "./AccountDataPage";
 import { CaregiversPage } from "./CaregiversPage";
+import { CarePausesPage, type CarePause } from "./CarePausesPage";
 import { NotesPage } from "./NotesPage";
 import { CommentsPage } from "./CommentsPage";
 import { CreateChildModal } from "./components/CreateChildModal";
+import { InteractiveRow } from "./components/InteractiveRow";
 import { LanguageControl } from "./components/LanguageControl";
 import { LanguagePicker } from "./components/LanguagePicker";
 import { ModalBackdrop } from "./components/ModalBackdrop";
 import { FeedmeBrand } from "./components/FeedmeBrand";
-import { ReminderScheduleFields } from "./components/ReminderScheduleFields";
+import { HelpLegalPanel, PublicSite, type PublicPage } from "./PublicSite";
 import { SidebarAccount } from "./components/SidebarAccount";
 import { TimezoneSelect } from "./components/TimezoneSelect";
+import { ActivityIcon } from "./components/ActivityIcon";
 import { timeZoneLabel } from "./timezones";
 import { translate } from "./i18n";
 import {
@@ -20,9 +29,9 @@ import {
   ClipboardPlus,
   Clock3,
   Copy,
-  Droplets,
   FileDown,
   HeartPulse,
+  CircleHelp,
   Menu,
   MessageCircle,
   MoreHorizontal,
@@ -31,7 +40,6 @@ import {
   Settings2,
   Sparkles,
   Trash2,
-  Utensils,
   UserMinus,
   Users,
   X,
@@ -44,13 +52,22 @@ type Field = {
   field_type: "text" | "number" | "boolean" | "select" | "duration";
   unit?: string;
   options: string[];
+  boolean_true_label?: string | null;
+  boolean_false_label?: string | null;
 };
 type Activity = {
   id: string;
   name: string;
   kind: "feeding" | "diaper" | "custom";
   color: string;
+  icon: string;
   fields: Field[];
+  schedule: {
+    kind: "interval" | "one_time";
+    interval_minutes?: number;
+    scheduled_for?: string;
+    last_event_time?: string | null;
+  } | null;
 };
 type Event = {
   id: string;
@@ -61,8 +78,9 @@ type Event = {
   activity_name: string;
   kind: Activity["kind"];
   color: string;
+  icon: string;
   created_by: string;
-  created_by_id: string;
+  created_by_id: string | null;
   feeding_portions: FeedingPortion[];
   comment_count?: number;
   first_comment?: string | null;
@@ -71,40 +89,37 @@ type Event = {
 type FeedingPortion = {
   kind: "breast_milk" | "formula";
   delivery_method: "bottle" | "breastfeeding";
-  amount_ml: number;
+  amount_ml: number | null;
+  duration_minutes: number | null;
 };
 type FeedingPortionDraft = {
   kind: FeedingPortion["kind"];
   deliveryMethod: FeedingPortion["delivery_method"];
   amountMl: string;
-};
-type Reminder = {
-  id: string;
-  kind: "interval" | "one_time";
-  interval_minutes?: number;
-  scheduled_for?: string;
-  title: string;
-  activity_id?: string;
+  durationMinutes: string;
 };
 type ActivityAnalytics = {
   activity_id: string;
   average: ActivityMetrics;
   calendar_day: ActivityMetrics;
   last_24_hours: ActivityMetrics;
-  history: Array<ActivityMetrics & { date: string }>;
+  history: Array<ActivityMetrics & { date: string; excluded_from_average: boolean }>;
 };
 type ActivityMetrics = {
   count: number;
   portion_count: number;
+  bottle_portion_count: number;
+  breastfeeding_portion_count: number;
   total_amount_ml: number;
+  total_breastfeeding_minutes: number;
   average_amount_ml: number | null;
+  average_breastfeeding_minutes: number | null;
 };
 type Dashboard = {
   role: "owner" | "care_manager" | "caregiver" | "viewer";
   timeline: Event[];
   activities: Activity[];
-  reminders: Reminder[];
-  gaps: { starts_at: string; ends_at: string }[];
+  gaps: CarePause[];
   analytics: ActivityAnalytics[];
   insight_activity_ids: string[] | null;
   first_record_date: string | null;
@@ -147,10 +162,7 @@ type LeavePreview = {
   successor_name?: string;
 };
 type Panel =
-  | "activity"
   | "field"
-  | "reminder"
-  | "gap"
   | "notes"
   | "invite"
   | "children"
@@ -179,14 +191,19 @@ function usePageScrollLock(locked: boolean) {
     };
   }, [locked]);
 }
-const icon = (kind: Activity["kind"]) =>
-  kind === "feeding" ? (
-    <Utensils size={17} />
-  ) : kind === "diaper" ? (
-    <Droplets size={17} />
-  ) : (
-    <HeartPulse size={17} />
-  );
+const accessibleIconColor = (backgroundColor: string) => {
+  const value = /^#([\da-f]{6})$/i.exec(backgroundColor)?.[1];
+  if (!value) return "#000";
+  const luminance = [0, 2, 4].reduce((total, index) => {
+    const channel = parseInt(value.slice(index, index + 2), 16) / 255;
+    const linear =
+      channel <= 0.04045
+        ? channel / 12.92
+        : ((channel + 0.055) / 1.055) ** 2.4;
+    return total + linear * [0.2126, 0.7152, 0.0722][index / 2];
+  }, 0);
+  return luminance > 0.179 ? "#000" : "#fff";
+};
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...options,
@@ -215,7 +232,7 @@ function eventDetail(
     return event.feeding_portions
       .map(
         (portion) =>
-          `${t(portion.kind === "breast_milk" ? "Breast milk" : "Formula")} · ${t(portion.delivery_method === "bottle" ? "Bottle" : "Breastfeeding")}: ${portion.amount_ml} ${t("ml")}`,
+          `${t(portion.kind === "breast_milk" ? "Breast milk" : "Formula")} · ${t(portion.delivery_method === "bottle" ? "Bottle" : "Breastfeeding")}: ${portion.delivery_method === "breastfeeding" ? `${portion.duration_minutes} ${t("minutes")}` : `${portion.amount_ml} ${t("ml")}`}`,
       )
       .join(" · ");
   const activity = activities.find((item) => item.id === event.activity_id);
@@ -226,7 +243,7 @@ function eventDetail(
       const label = t(field?.label ?? humanizeFieldKey(key));
       const displayValue =
         typeof value === "boolean"
-          ? t(value ? "Yes" : "No")
+          ? t(value ? field?.boolean_true_label ?? "Yes" : field?.boolean_false_label ?? "No")
           : t(String(value));
       return `${label}: ${displayValue}`;
     });
@@ -261,8 +278,11 @@ export default function App() {
   const [createChildOpen, setCreateChildOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [editingLog, setEditingLog] = useState<Event | null>(null);
+  const [completingScheduleActivityId, setCompletingScheduleActivityId] = useState<string | null>(null);
+  const [reminderActivityId, setReminderActivityId] = useState<string | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
+  const [helpLegalOpen, setHelpLegalOpen] = useState(false);
   const [timelineActivityId, setTimelineActivityId] = useState<string | null>(null);
   const [timelineSlideDirection, setTimelineSlideDirection] = useState<
     "from-left" | "from-right" | null
@@ -273,13 +293,12 @@ export default function App() {
   const [activityId, setActivityId] = useState("");
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [feedingPortions, setFeedingPortions] = useState<FeedingPortionDraft[]>(
-    [{ kind: "breast_milk", deliveryMethod: "bottle", amountMl: "" }],
+    [{ kind: "breast_milk", deliveryMethod: "bottle", amountMl: "", durationMinutes: "" }],
   );
   const [note, setNote] = useState("");
   const [at, setAt] = useState(localDateTime());
   const [notes, setNotes] = useState<Note[]>([]);
   const [selected, setSelected] = useState<Event | null>(null);
-  const [selectedReminder, setSelectedReminder] = useState<Reminder | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [comment, setComment] = useState("");
   const [inviteUrl, setInviteUrl] = useState("");
@@ -291,8 +310,11 @@ export default function App() {
   usePageScrollLock(mobileSidebarOpen);
   const locale: User["locale"] = user?.locale ?? guestLocale;
   const t = (text: string) => translate(locale, text);
+  const timelineOpen = /^\/children\/[^/]+$/.test(routePath);
   const insightsOpen = /^\/children\/[^/]+\/insights$/.test(routePath);
   const caregiversOpen = /^\/children\/[^/]+\/caregivers$/.test(routePath);
+  const carePausesOpen = /^\/children\/[^/]+\/care-pauses$/.test(routePath);
+  const activitiesRemindersOpen = /^\/children\/[^/]+\/activities-reminders$/.test(routePath);
   const owner = dash?.role === "owner";
   const canManage = owner || dash?.role === "care_manager";
   const write = dash?.role !== "viewer";
@@ -362,32 +384,36 @@ export default function App() {
         : { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
     }).format(new Date(value));
   };
-  const todayEvents = events.filter(
-    (event) => localDayKey(event.event_time) === todayDayKey,
-  );
-  const todayFeedings = todayEvents.filter((event) => event.kind === "feeding");
-  const todayDiapers = todayEvents.filter((event) => event.kind === "diaper");
-  const feed = events.filter((event) => event.kind === "feeding");
+  const recordCountsByActivity = new Map<string, number>();
+  for (const event of events) {
+    recordCountsByActivity.set(
+      event.activity_id,
+      (recordCountsByActivity.get(event.activity_id) ?? 0) + 1,
+    );
+  }
+  const recordCountsByDay = new Map<string, number>();
+  for (const event of timelineEvents) {
+    const dayKey = localDayKey(event.event_time);
+    recordCountsByDay.set(dayKey, (recordCountsByDay.get(dayKey) ?? 0) + 1);
+  }
   const current = dash?.activities.find((item) => item.id === activityId);
-  const lastFeed = feed[0];
-  const feedReminder = dash?.reminders.find(
-    (item) =>
-      item.kind === "interval" && item.activity_id === lastFeed?.activity_id,
-  );
-  const expected = useMemo(
-    () =>
-      lastFeed && feedReminder?.interval_minutes
-        ? new Date(
-            new Date(lastFeed.event_time).getTime() +
-              feedReminder.interval_minutes * 60_000,
-          )
-        : null,
-    [lastFeed?.id, feedReminder?.id],
-  );
   const navigate = (path: string, replace = false) => {
-    if (location.pathname !== path)
-      history[replace ? "replaceState" : "pushState"]({}, "", path);
-    setRoutePath(path);
+    const destination = new URL(path, window.location.origin);
+    const current = `${location.pathname}${location.search}${location.hash}`;
+    const next = `${destination.pathname}${destination.search}${destination.hash}`;
+    if (current !== next)
+      history[replace ? "replaceState" : "pushState"]({}, "", next);
+    setRoutePath(destination.pathname);
+    if (destination.hash) {
+      requestAnimationFrame(() =>
+        document
+          .getElementById(destination.hash.slice(1))
+          ?.scrollIntoView({
+            behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+            block: "start",
+          }),
+      );
+    }
   };
   const load = async () => {
     const me = await api<User>("/api/me");
@@ -432,13 +458,11 @@ export default function App() {
     return () => removeEventListener("popstate", onPopState);
   }, []);
   useEffect(() => {
+    setMobileSidebarOpen(false);
+  }, [routePath]);
+  useEffect(() => {
     if (!user) return;
-    if (routePath === "/") {
-      history.replaceState({}, "", "/children");
-      setRoutePath("/children");
-      return;
-    }
-    const match = routePath.match(/^\/children\/([^/]+)(?:\/(?:insights|caregivers))?$/);
+    const match = routePath.match(/^\/children\/([^/]+)(?:\/(?:insights|caregivers|care-pauses|activities-reminders))?$/);
     if (match) {
       const routeChild = children.find((item) => item.id === match[1]);
       if (routeChild) setChild(routeChild);
@@ -457,9 +481,16 @@ export default function App() {
     const match = routePath.match(/^\/children\/([^/]+)\/caregivers$/);
     if (match) loadMembers(match[1]).catch((cause: Error) => setError(cause.message));
   }, [routePath]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.lang = locale;
-    document.documentElement.dir = locale === "he" ? "rtl" : "ltr";
+    document.documentElement.dir = "ltr";
+    const appRoot = document.getElementById("root");
+    if (appRoot) {
+      appRoot.lang = locale;
+      appRoot.dir = locale === "he" ? "rtl" : "ltr";
+    }
+  }, [locale]);
+  useEffect(() => {
     const token = new URLSearchParams(location.search).get("invite");
     if (!token) return;
     api<InvitationPreview>(`/api/invitations/${token}`)
@@ -470,7 +501,35 @@ export default function App() {
       .catch((cause: Error) => {
         if (user) setError(cause.message);
       });
-  }, [user?.id, locale]);
+  }, [user?.id]);
+  useEffect(() => {
+    const titles: Record<string, string> = {
+      "/": locale === "he" ? "טיפול משותף" : "Shared care",
+      "/about": locale === "he" ? "אודות" : "About",
+      "/privacy": locale === "he" ? "פרטיות" : "Privacy",
+      "/terms": locale === "he" ? "תנאים ובטיחות" : "Terms & safety",
+      "/accessibility": locale === "he" ? "נגישות" : "Accessibility",
+      "/contact": locale === "he" ? "יצירת קשר" : "Contact",
+      "/children": locale === "he" ? "ילדים" : "Children",
+      "/account/privacy": locale === "he" ? "פרטיות ונתונים" : "Privacy & data",
+    };
+    const timelineMatch = routePath.match(/^\/children\/[^/]+$/);
+    const insightsMatch = routePath.match(/^\/children\/[^/]+\/insights$/);
+    const caregiversMatch = routePath.match(/^\/children\/[^/]+\/caregivers$/);
+    const carePausesMatch = routePath.match(/^\/children\/[^/]+\/care-pauses$/);
+    const activitiesRemindersMatch = routePath.match(/^\/children\/[^/]+\/activities-reminders$/);
+    if (timelineMatch && child)
+      document.title = locale === "he" ? `ציר הזמן של ${child.name}` : `${child.name}’s timeline`;
+    else if (insightsMatch && child)
+      document.title = locale === "he" ? `דפוסי הטיפול של ${child.name}` : `${child.name}’s care patterns`;
+    else if (caregiversMatch)
+      document.title = locale === "he" ? "מטפלים" : "Caregivers";
+    else if (carePausesMatch)
+      document.title = locale === "he" ? "הפסקות טיפול" : "Care pauses";
+    else if (activitiesRemindersMatch)
+      document.title = locale === "he" ? "פעילויות ותזכורות" : "Activities & reminders";
+    else document.title = titles[routePath] ?? "Feedme";
+  }, [routePath, locale, child?.id, child?.name]);
   const clearInvite = () => {
     const url = new URL(location.href);
     url.searchParams.delete("invite");
@@ -499,6 +558,7 @@ export default function App() {
       const target = event.target as HTMLElement;
       if (target?.classList.contains("modal-backdrop")) {
         setPanel(null);
+        setCompletingScheduleActivityId(null);
         setLogOpen(false);
         setSelected(null);
         setCreateChildOpen(false);
@@ -521,7 +581,8 @@ export default function App() {
         editingLog.feeding_portions.map((portion) => ({
           kind: portion.kind,
           deliveryMethod: portion.delivery_method,
-          amountMl: String(portion.amount_ml),
+          amountMl: portion.amount_ml === null ? "" : String(portion.amount_ml),
+          durationMinutes: portion.duration_minutes === null ? "" : String(portion.duration_minutes),
         })),
       );
       return;
@@ -588,6 +649,33 @@ export default function App() {
     });
     await load();
   }
+  async function downloadAccountData() {
+    const response = await fetch("/api/me/export", { credentials: "include" });
+    if (!response.ok) {
+      throw new Error(
+        (await response.json().catch(() => ({ error: "Request failed" }))).error,
+      );
+    }
+    const downloadUrl = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = "feedme-account-data.json";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(downloadUrl);
+  }
+  async function deleteAccount(emailConfirmation: string) {
+    await api("/api/me", {
+      method: "DELETE",
+      body: JSON.stringify({ emailConfirmation }),
+    });
+    setUser(null);
+    setChildren([]);
+    setChild(null);
+    setDash(null);
+    navigate("/", true);
+  }
   async function deleteChild(item: Child) {
     if (
       !confirm(
@@ -644,6 +732,7 @@ export default function App() {
       kind: portion.kind,
       deliveryMethod: portion.deliveryMethod,
       amountMl: Number(portion.amountMl),
+      durationMinutes: Number(portion.durationMinutes),
     }));
     await api(editingLog ? `/api/logs/${editingLog.id}` : `/api/children/${child.id}/logs`, {
       method: editingLog ? "PUT" : "POST",
@@ -654,41 +743,50 @@ export default function App() {
         fieldValues,
         portions: current.kind === "feeding" ? portions : undefined,
         note,
+        completeOneTimeSchedule:
+          !editingLog && completingScheduleActivityId === activityId,
       }),
     });
     setNote("");
     setFeedingPortions([
-      { kind: "breast_milk", deliveryMethod: "bottle", amountMl: "" },
+      { kind: "breast_milk", deliveryMethod: "bottle", amountMl: "", durationMinutes: "" },
     ]);
     setEditingLog(null);
+    setCompletingScheduleActivityId(null);
+    setReminderActivityId(null);
     setLogOpen(false);
     await loadDash(child.id);
   }
-  async function createActivity(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function activityFieldPayloads(fields: ActivityFieldDraft[]) {
+    const keys = new Set<string>();
+    return fields.map((field) => {
+      const baseKey = field.field_key ?? (field.label.toLowerCase().replaceAll(" ", "_") || "field");
+      let key = baseKey;
+      let suffix = 2;
+      while (keys.has(key)) key = `${baseKey}_${suffix++}`;
+      keys.add(key);
+      return {
+        ...(field.id ? { id: field.id } : {}),
+        key,
+        label: field.label,
+        type: field.field_type,
+        unit: field.unit || null,
+        options: field.options,
+        booleanTrueLabel: field.boolean_true_label || null,
+        booleanFalseLabel: field.boolean_false_label || null,
+        metrics: ["average", "trend"],
+      };
+    });
+  }
+  async function createActivity(input: ActivityEditorInput) {
     if (!child) return;
-    const form = new FormData(event.currentTarget);
-    const field = String(form.get("field") ?? "");
     await api(`/api/children/${child.id}/activities`, {
       method: "POST",
       body: JSON.stringify({
-        name: form.get("name"),
+        name: input.name,
         color: "#8b68c8",
-        fields: field
-          ? [
-              {
-                key: field.toLowerCase().replaceAll(" ", "_"),
-                label: field,
-                type: form.get("type"),
-                unit: form.get("unit") || null,
-                options: String(form.get("options") ?? "")
-                  .split(",")
-                  .map((value) => value.trim())
-                  .filter(Boolean),
-                metrics: ["average", "trend"],
-              },
-            ]
-          : [],
+        icon: input.icon,
+        fields: activityFieldPayloads(input.fields ?? []),
       }),
     });
     setPanel(null);
@@ -707,110 +805,80 @@ export default function App() {
     await api(`/api/activities/${id}`, { method: "DELETE" });
     await loadDash(child.id);
   }
-  async function updateActivity(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!child) return;
-    const form = new FormData(event.currentTarget);
-    await api(`/api/activities/${form.get("activityId")}`, {
+  async function updateActivity(input: ActivityEditorInput) {
+    if (!child || !input.id || !input.color) return;
+    await api(`/api/activities/${input.id}`, {
       method: "PUT",
       body: JSON.stringify({
-        name: form.get("name"),
-        color: form.get("color"),
+        name: input.name,
+        color: input.color,
+        icon: input.icon,
       }),
     });
+    if (input.fields)
+      await api(`/api/activities/${input.id}/fields`, {
+        method: "PUT",
+        body: JSON.stringify({ fields: activityFieldPayloads(input.fields) }),
+      });
     await loadDash(child.id);
   }
-  async function addField(event: FormEvent<HTMLFormElement>) {
+  async function saveActivitySchedule(
+    activity: Activity,
+    event: FormEvent<HTMLFormElement>,
+  ) {
     event.preventDefault();
     if (!child) return;
     const form = new FormData(event.currentTarget);
-    const field = String(form.get("field"));
-    await api(`/api/activities/${form.get("activityId")}/fields`, {
-      method: "POST",
-      body: JSON.stringify({
-        fieldKey: field.toLowerCase().replaceAll(" ", "_"),
-        label: field,
-        fieldType: form.get("type"),
-        unit: form.get("unit") || null,
-        options: String(form.get("options") ?? "")
-          .split(",")
-          .map((value) => value.trim())
-          .filter(Boolean),
-        metrics: ["average", "trend"],
-      }),
-    });
-    setPanel(null);
-    await loadDash(child.id);
-  }
-  async function remind(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!child) return;
-    const form = new FormData(event.currentTarget);
-    const kind = String(form.get("kind"));
+    const kind = String(form.get("kind")) as "interval" | "one_time";
     const when = String(form.get("when"));
     if (kind === "one_time" && !when)
       throw new Error(t("Choose a date and time."));
-    await api(`/api/children/${child.id}/reminders`, {
-      method: "POST",
+    await api(`/api/activities/${activity.id}/schedule`, {
+      method: "PUT",
       body: JSON.stringify({
-        title: form.get("title"),
-        activityId: form.get("activityId") || null,
         kind,
-        intervalMinutes:
-          kind === "interval" ? Number(form.get("hours")) * 60 : null,
+        intervalMinutes: kind === "interval" ? Number(form.get("hours")) * 60 : null,
         scheduledFor: kind === "one_time" ? new Date(when).toISOString() : null,
       }),
     });
-    setPanel(null);
     await loadDash(child.id);
   }
-  async function updateReminder(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!child || !selectedReminder) return;
-    const form = new FormData(event.currentTarget);
-    const kind = String(form.get("kind")) as Reminder["kind"];
-    const when = String(form.get("when"));
-    if (kind === "one_time" && !when)
-      throw new Error(t("Choose a date and time."));
-    await api(`/api/reminders/${selectedReminder.id}`, {
-      method: "PUT",
-      body: JSON.stringify({
-        title: form.get("title"),
-        activityId: form.get("activityId") || null,
-        kind,
-        intervalMinutes:
-          kind === "interval" ? Number(form.get("hours")) * 60 : null,
-        scheduledFor:
-          kind === "one_time" ? new Date(when).toISOString() : null,
-      }),
-    });
-    setSelectedReminder(null);
-    await loadDash(child.id);
-  }
-  async function completeReminder(item: Reminder) {
-    if (!child) return;
-    await api(`/api/reminders/${item.id}/complete`, { method: "POST" });
-    await loadDash(child.id);
-  }
-  async function deleteReminder(item: Reminder) {
+  async function deleteActivitySchedule(activity: Activity) {
     if (!child || !confirm(t("Delete this reminder?"))) return;
-    await api(`/api/reminders/${item.id}`, { method: "DELETE" });
-    setSelectedReminder((current) => (current?.id === item.id ? null : current));
+    await api(`/api/activities/${activity.id}/schedule`, { method: "DELETE" });
     await loadDash(child.id);
   }
-  async function gap(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function completeScheduledEvent(activity: Activity) {
+    setActivityId(activity.id);
+    setAt(localDateTime());
+    setNote("");
+    setFeedingPortions([
+      { kind: "breast_milk", deliveryMethod: "bottle", amountMl: "", durationMinutes: "" },
+    ]);
+    setEditingLog(null);
+    setCompletingScheduleActivityId(activity.id);
+    setReminderActivityId(activity.id);
+    setLogOpen(true);
+  }
+  async function saveCarePause(
+    pause: CarePause | null,
+    draft: { startsAt: string; endsAt: string; reason: string; includeInAverages: boolean },
+  ) {
     if (!child) return;
-    const form = new FormData(event.currentTarget);
-    await api(`/api/children/${child.id}/gaps`, {
-      method: "POST",
-      body: JSON.stringify({
-        startsAt: new Date(String(form.get("start"))).toISOString(),
-        endsAt: new Date(String(form.get("end"))).toISOString(),
-        reason: form.get("reason"),
-      }),
-    });
-    setPanel(null);
+    await api(
+      pause
+        ? `/api/children/${child.id}/gaps/${pause.id}`
+        : `/api/children/${child.id}/gaps`,
+      {
+        method: pause ? "PUT" : "POST",
+        body: JSON.stringify(draft),
+      },
+    );
+    await loadDash(child.id);
+  }
+  async function deleteCarePause(pause: CarePause) {
+    if (!child) return;
+    await api(`/api/children/${child.id}/gaps/${pause.id}`, { method: "DELETE" });
     await loadDash(child.id);
   }
   async function invite(event: FormEvent<HTMLFormElement>) {
@@ -832,7 +900,8 @@ export default function App() {
   async function addNote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!child) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     await api(`/api/children/${child.id}/notes`, {
       method: "POST",
       body: JSON.stringify({
@@ -840,7 +909,7 @@ export default function App() {
         visibility: form.get("visibility"),
       }),
     });
-    event.currentTarget.reset();
+    formElement.reset();
     await loadNotes();
   }
   async function editNote(item: Note) {
@@ -922,6 +991,8 @@ export default function App() {
     setNote(log.note ?? "");
     setSelected(null);
     setEditingLog(log);
+    setCompletingScheduleActivityId(null);
+    setReminderActivityId(null);
     setLogOpen(true);
   }
   const setLocale = async (locale: User["locale"]) => {
@@ -952,8 +1023,44 @@ export default function App() {
     setHomeOpen(false);
     navigate("/", true);
   };
+  const publicPage: PublicPage | null =
+    routePath === "/" ? "landing" :
+    routePath === "/about" ? "about" :
+    routePath === "/privacy" ? "privacy" :
+    routePath === "/cookies" ? "privacy" :
+    routePath === "/terms" ? "terms" :
+    routePath === "/security" ? "privacy" :
+    routePath === "/accessibility" ? "accessibility" :
+    routePath === "/contact" ? "contact" : null;
+  if (publicPage)
+    return (
+      <PublicSite
+        page={publicPage}
+        locale={locale}
+        onLocale={setLocale}
+        onNavigate={navigate}
+        onSignIn={() => {
+          const invite = new URLSearchParams(location.search).get("invite");
+          navigate(user ? "/children" : invite ? `/sign-in?invite=${encodeURIComponent(invite)}` : "/sign-in");
+        }}
+        accountName={user?.display_name}
+        onSettings={user ? () => navigate("/account/privacy") : undefined}
+        onSignOut={user ? signOut : undefined}
+      />
+    );
   if (loading)
     return <div className="loading-screen">{t("Loading Feedme…")}</div>;
+  if (routePath === "/account/privacy" && user)
+    return (
+      <AccountDataPage
+        locale={user.locale}
+        email={user.email}
+        onBack={() => navigate("/children")}
+        onLanding={() => navigate("/")}
+        onDownload={downloadAccountData}
+        onDelete={deleteAccount}
+      />
+    );
   if (!user)
     return (
       <div className="sign-in-shell">
@@ -966,7 +1073,7 @@ export default function App() {
             />
           </div>
           <form className="sign-in" onSubmit={login}>
-            <FeedmeBrand />
+            <FeedmeBrand locale={locale} onClick={() => navigate("/")} />
             <p className="eyebrow">{t("SHARED CHILD CARE")}</p>
             <h1>
               {auth === "sign-in"
@@ -986,6 +1093,7 @@ export default function App() {
                 <input
                   value={name}
                   onChange={(event) => setName(event.target.value)}
+                  autoComplete="name"
                   required
                 />
               </label>
@@ -996,6 +1104,7 @@ export default function App() {
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 type="email"
+                autoComplete="email"
                 required
               />
             </label>
@@ -1005,11 +1114,12 @@ export default function App() {
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
                 type="password"
+                autoComplete={auth === "sign-in" ? "current-password" : "new-password"}
                 minLength={8}
                 required
               />
             </label>
-            {error && <p className="form-error">{error}</p>}
+            {error && <p className="form-error" role="alert">{error}</p>}
             <button className="primary submit">
               {auth === "sign-in" ? t("Sign in") : t("Create account")}
             </button>
@@ -1068,7 +1178,9 @@ export default function App() {
           onCloseLanguage={() => setLanguageOpen(false)}
           onLocale={setLocale}
           onSignOut={signOut}
-          onHome={() => navigate("/children")}
+          onHome={() => navigate("/")}
+          onPrivacyData={() => navigate("/account/privacy")}
+          onNavigateLegal={navigate}
         />
         {invitePreview && (
           <InvitationPreviewModal
@@ -1082,20 +1194,32 @@ export default function App() {
     );
   if (!child || homeOpen)
     return (
-      <Home
-        user={user}
-        error={error}
-        createChildOpen={createChildOpen}
-        onCreate={openCreateChild}
-        onCloseCreate={() => setCreateChildOpen(false)}
-        onCreateChild={createChild}
-        languageOpen={languageOpen}
-        onOpenLanguage={() => setLanguageOpen(true)}
-        onCloseLanguage={() => setLanguageOpen(false)}
-        onLocale={setLocale}
-        onSignOut={signOut}
-        onHome={() => navigate("/children")}
-      />
+      <>
+        <Home
+          user={user}
+          error={error}
+          createChildOpen={createChildOpen}
+          onCreate={openCreateChild}
+          onCloseCreate={() => setCreateChildOpen(false)}
+          onCreateChild={createChild}
+          languageOpen={languageOpen}
+          onOpenLanguage={() => setLanguageOpen(true)}
+          onCloseLanguage={() => setLanguageOpen(false)}
+          onLocale={setLocale}
+          onSignOut={signOut}
+          onHome={() => navigate("/")}
+          onPrivacyData={() => navigate("/account/privacy")}
+          onNavigateLegal={navigate}
+        />
+        {invitePreview && (
+          <InvitationPreviewModal
+            locale={user.locale}
+            invitation={invitePreview}
+            onAccept={acceptInvite}
+            onClose={clearInvite}
+          />
+        )}
+      </>
     );
   if (!dash)
     return <div className="loading-screen">{t("Loading family space…")}</div>;
@@ -1141,90 +1265,7 @@ export default function App() {
         aria-label={t("Close navigation")}
         onClick={() => setMobileSidebarOpen(false)}
       />
-      <aside className="sidebar">
-        <FeedmeBrand onClick={() => navigate("/children")} />
-        <label className="child-switch">
-          <span className="avatar">{child.name[0]}</span>
-          <span>
-            <strong>{child.name}</strong>
-            <small>{timeZoneLabel(child.timezone, user.locale)}</small>
-          </span>
-          <select
-            value={child.id}
-            onChange={(event) => navigate(`/children/${event.target.value}`)}
-          >
-            {children.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <nav onClickCapture={() => setMobileSidebarOpen(false)}>
-          <button
-            className={insightsOpen ? "" : "nav-active"}
-            onClick={() => navigate(`/children/${child.id}`)}
-          >
-            <Clock3 size={18} />
-            {t("Timeline")}
-          </button>
-          <button
-            className={insightsOpen ? "nav-active" : ""}
-            onClick={() => navigate(`/children/${child.id}/insights`)}
-          >
-            <Sparkles size={18} />
-            {t("Insights")}
-          </button>
-        </nav>
-        <div
-          className="sidebar-bottom"
-          onClickCapture={() => setMobileSidebarOpen(false)}
-        >
-          {canManage && (
-            <button onClick={() => setPanel("activity")}>
-              <Settings2 size={18} />
-              {t("Manage care")}
-            </button>
-          )}
-          <button onClick={() => setPanel("gap")}>
-            <HeartPulse size={18} />
-            {t("Declare care gap")}
-          </button>
-          {canManage && (
-            <button onClick={() => setPanel("invite")}>
-              <Users size={18} />
-              {t("Invite caregiver")}
-            </button>
-          )}
-          <button
-            className={caregiversOpen ? "nav-active" : ""}
-            onClick={() => navigate(`/children/${child.id}/caregivers`)}
-          >
-            <Users size={18} />
-            {t("Caregivers")}
-          </button>
-          <button onClick={() => navigate("/children")}>
-            <Users size={18} />
-            {t("Children")}
-          </button>
-          <LanguageControl
-            locale={user.locale}
-            label={t("Language")}
-            onClick={() => setLanguageOpen(true)}
-          />
-          <button className="leave-space" onClick={openLeave}>
-            <UserMinus size={18} />
-            {t("Leave care space")}
-          </button>
-          <SidebarAccount
-            displayName={user.display_name}
-            detail={t(dash.role === "care_manager" ? "Care manager" : dash.role)}
-            signOutLabel={t("Sign out")}
-            onSignOut={signOut}
-          />
-        </div>
-      </aside>
-      <section className={`workspace ${insightsOpen || caregiversOpen ? "insights-workspace" : ""}`}>
+      <section className={`workspace ${insightsOpen || caregiversOpen || carePausesOpen || activitiesRemindersOpen ? "insights-workspace" : ""}`}>
         {insightsOpen ? (
           <AnalyticsView
             child={child}
@@ -1245,9 +1286,33 @@ export default function App() {
             onChangeRole={changeMemberRole}
             onRemove={removeMember}
           />
+        ) : carePausesOpen ? (
+          <CarePausesPage
+            locale={user.locale}
+            timezone={child.timezone}
+            pauses={dash.gaps}
+            write={write}
+            onBack={() => navigate(`/children/${child.id}`)}
+            onOpenNavigation={() => setMobileSidebarOpen(true)}
+            onSave={saveCarePause}
+            onDelete={deleteCarePause}
+          />
+        ) : activitiesRemindersOpen ? (
+          <ActivitiesRemindersPage
+            locale={user.locale}
+            activities={dash.activities}
+            canManage={canManage}
+            onBack={() => navigate(`/children/${child.id}`)}
+            onOpenNavigation={() => setMobileSidebarOpen(true)}
+            onCreateActivity={createActivity}
+            onUpdateActivity={updateActivity}
+            onArchiveActivity={archiveActivity}
+            onSaveSchedule={saveActivitySchedule}
+            onDeleteSchedule={deleteActivitySchedule}
+          />
         ) : (
           <>
-        <header className="topbar">
+        <div className="topbar">
           <div className="topbar-title">
             <button
               className="mobile-menu"
@@ -1267,6 +1332,7 @@ export default function App() {
             <button
               className="icon-button"
               title={t("Export CSV")}
+              aria-label={t("Export CSV")}
               onClick={() =>
                 window.open(`/api/children/${child.id}/export.csv`, "_blank")
               }
@@ -1283,9 +1349,12 @@ export default function App() {
                       kind: "breast_milk",
                       deliveryMethod: "bottle",
                       amountMl: "",
+                      durationMinutes: "",
                     },
                   ]);
                   setEditingLog(null);
+                  setCompletingScheduleActivityId(null);
+                  setReminderActivityId(null);
                   setLogOpen(true);
                 }}
               >
@@ -1294,56 +1363,26 @@ export default function App() {
               </button>
             )}
           </div>
-        </header>
-        <section className="summary-strip">
-          <div>
-            <p>{t("Last feeding")}</p>
-            <strong>
-              {lastFeed ? summaryTime(lastFeed.event_time) : "—"}
-            </strong>
-          </div>
-          <div>
-            <p>{t("Next expected")}</p>
-            <strong>
-              {expected ? summaryTime(expected) : "—"}
-            </strong>
-          </div>
-          <div>
-            <p>{t("Care today")}</p>
-            <strong>
-              {todayEvents.length} {t("records")}
-            </strong>
-          </div>
-          <div>
-            <p>{t("Feedings today")}</p>
-            <strong>
-              {todayFeedings.length} {t("records")}
-            </strong>
-          </div>
-          <div>
-            <p>{t("Diapers today")}</p>
-            <strong>
-              {todayDiapers.length} {t("records")}
-            </strong>
-          </div>
-        </section>
+        </div>
         <UpcomingList
-          reminders={dash.reminders}
+          activities={dash.activities}
           locale={user.locale}
+          formatExpectedTime={summaryTime}
           canManage={canManage}
           onLogActivity={write ? (id) => {
             setActivityId(id);
             setAt(localDateTime());
             setFeedingPortions([
-              { kind: "breast_milk", deliveryMethod: "bottle", amountMl: "" },
+              { kind: "breast_milk", deliveryMethod: "bottle", amountMl: "", durationMinutes: "" },
             ]);
             setEditingLog(null);
+            setCompletingScheduleActivityId(null);
+            setReminderActivityId(id);
             setLogOpen(true);
           } : undefined}
-          onOpen={() => setPanel("reminder")}
-          onSelect={setSelectedReminder}
-          onComplete={completeReminder}
-          onDelete={deleteReminder}
+          onOpen={() => navigate(`/children/${child.id}/activities-reminders`)}
+          onComplete={completeScheduledEvent}
+          onDelete={deleteActivitySchedule}
         />
         <section className="timeline-area">
           <div className="section-head">
@@ -1358,25 +1397,35 @@ export default function App() {
               {t("Notes")}
             </button>
           </div>
-          <div className="timeline-filter-carousel" role="tablist" aria-label={t("Care history")}>
-            <button
+          <div className="timeline-filter-carousel" role="radiogroup" aria-label={t("Care history")}>
+            <label
               className={`timeline-filter-tab ${timelineActivityId === null ? "active" : ""}`}
-              role="tab"
-              aria-selected={timelineActivityId === null}
-              onClick={() => switchTimelineActivity(null)}
             >
-              {t("All")}
-            </button>
+              <input
+                className="sr-only"
+                type="radio"
+                name="timeline-activity-filter"
+                checked={timelineActivityId === null}
+                onChange={() => switchTimelineActivity(null)}
+              />
+              <span>{t("All")}</span>
+              <small>{events.length} {t("records")}</small>
+            </label>
             {dash.activities.map((activity) => (
-              <button
+              <label
                 className={`timeline-filter-tab ${timelineActivityId === activity.id ? "active" : ""}`}
                 key={activity.id}
-                role="tab"
-                aria-selected={timelineActivityId === activity.id}
-                onClick={() => switchTimelineActivity(activity.id)}
               >
-                {t(activity.name)}
-              </button>
+                <input
+                  className="sr-only"
+                  type="radio"
+                  name="timeline-activity-filter"
+                  checked={timelineActivityId === activity.id}
+                  onChange={() => switchTimelineActivity(activity.id)}
+                />
+                <span>{t(activity.name)}</span>
+                <small>{recordCountsByActivity.get(activity.id) ?? 0} {t("records")}</small>
+              </label>
             ))}
           </div>
           <div
@@ -1433,7 +1482,7 @@ export default function App() {
                 const feedingTotal =
                   event.kind === "feeding"
                     ? event.feeding_portions.reduce(
-                        (total, portion) => total + portion.amount_ml,
+                        (total, portion) => total + (portion.amount_ml ?? 0),
                         0,
                       )
                     : null;
@@ -1441,38 +1490,52 @@ export default function App() {
                 <Fragment key={event.id}>
                   {startsNewDay && (
                     <div className="timeline-date-divider">
-                      <span>{timelineDayFormatter.format(new Date(event.event_time))}</span>
+                      <span>
+                        {timelineDayFormatter.format(new Date(event.event_time))}
+                        <small>{recordCountsByDay.get(dayKey) ?? 0} {t("records")}</small>
+                      </span>
                     </div>
                   )}
-                  <article
-                    className="event event-open-detail"
-                    tabIndex={0}
-                    role="button"
-                    onClick={() => {
-                      if (timelineSwipeDetected.current) return;
+                  <InteractiveRow
+                    layout="custom"
+                    className="event"
+                    onClick={(clickEvent) => {
+                      if (
+                        timelineSwipeDetected.current ||
+                        (clickEvent.target as HTMLElement).closest("button")
+                      )
+                        return;
                       openLog(event);
-                    }}
-                    onKeyDown={(keyboardEvent) => {
-                      if (keyboardEvent.key === "Enter" || keyboardEvent.key === " ") {
-                        keyboardEvent.preventDefault();
-                        openLog(event);
-                      }
                     }}
                   >
                     <time>{clock(event.event_time, user.locale)}</time>
                     <span className="event-line">
-                      <i style={{ background: event.color }}>{icon(event.kind)}</i>
+                      <i
+                        style={{
+                          background: event.color,
+                          color: accessibleIconColor(event.color),
+                        }}
+                      >
+                        <ActivityIcon kind={event.kind} icon={event.icon} />
+                      </i>
                     </span>
                     <div className="event-content">
                       <div className="event-title">
-                        <h3>
-                          {t(event.activity_name)}
-                          {feedingTotal !== null && (
-                            <span className="feeding-total">
-                              · {feedingTotal} {t("ml")}
-                            </span>
-                          )}
-                        </h3>
+                        <p className="event-record-title">
+                          <button
+                            className="event-open-detail"
+                            type="button"
+                            aria-label={`${clock(event.event_time, user.locale)} ${t(event.activity_name)}`}
+                            onClick={() => openLog(event)}
+                          >
+                            {t(event.activity_name)}
+                            {feedingTotal !== null && (
+                              <span className="feeding-total">
+                                · {feedingTotal} {t("ml")}
+                              </span>
+                            )}
+                          </button>
+                        </p>
                         <span>
                           {t("by")} {event.created_by}
                         </span>
@@ -1487,10 +1550,7 @@ export default function App() {
                           {(event.comment_count ?? 0) > 1 && (
                             <button
                               type="button"
-                              onClick={(clickEvent) => {
-                                clickEvent.stopPropagation();
-                                openComments(event);
-                              }}
+                              onClick={() => openComments(event)}
                             >
                               {t("Show more")}
                               <ChevronDown size={13} aria-hidden="true" />
@@ -1505,10 +1565,7 @@ export default function App() {
                           className="more"
                           aria-label={`${t("Edit")} ${t(event.activity_name)}`}
                           title={t("Edit")}
-                          onClick={(clickEvent) => {
-                            clickEvent.stopPropagation();
-                            openLog(event);
-                          }}
+                          onClick={() => openLog(event)}
                         >
                           <Pencil size={16} />
                         </button>
@@ -1517,10 +1574,7 @@ export default function App() {
                         className="more"
                         aria-label={`${t("Comment")} ${t(event.activity_name)}`}
                         title={t("Comment")}
-                        onClick={(clickEvent) => {
-                          clickEvent.stopPropagation();
-                          openComments(event);
-                        }}
+                        onClick={() => openComments(event)}
                       >
                         <MessageCircle size={17} />
                       </button>
@@ -1529,16 +1583,13 @@ export default function App() {
                           className="more delete-log"
                           aria-label={`${t("Delete")} ${t(event.activity_name)}`}
                           title={t("Delete")}
-                          onClick={(clickEvent) => {
-                            clickEvent.stopPropagation();
-                            deleteLog(event);
-                          }}
+                          onClick={() => deleteLog(event)}
                         >
                           <Trash2 size={16} />
                         </button>
                       )}
                     </div>
-                  </article>
+                  </InteractiveRow>
                 </Fragment>
                 );
               })}
@@ -1548,6 +1599,127 @@ export default function App() {
           </>
         )}
       </section>
+      <aside className="sidebar">
+        <FeedmeBrand locale={locale} onClick={() => navigate("/")} />
+        <label className="child-switch">
+          <span className="avatar">{child.name[0]}</span>
+          <span>
+            <strong>{child.name}</strong>
+            <small>{timeZoneLabel(child.timezone, user.locale)}</small>
+          </span>
+          <select
+            value={child.id}
+            onChange={(event) => navigate(`/children/${event.target.value}`)}
+          >
+            {children.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <nav>
+          <button
+            className={timelineOpen ? "nav-active" : ""}
+            onClick={() => {
+              setMobileSidebarOpen(false);
+              navigate(`/children/${child.id}`);
+            }}
+          >
+            <Clock3 size={18} />
+            {t("Timeline")}
+          </button>
+          <button
+            className={insightsOpen ? "nav-active" : ""}
+            onClick={() => {
+              setMobileSidebarOpen(false);
+              navigate(`/children/${child.id}/insights`);
+            }}
+          >
+            <Sparkles size={18} />
+            {t("Insights")}
+          </button>
+        </nav>
+        <div className="sidebar-bottom">
+          {canManage && (
+            <button
+              className={activitiesRemindersOpen ? "nav-active" : ""}
+              onClick={() => {
+                setMobileSidebarOpen(false);
+                navigate(`/children/${child.id}/activities-reminders`);
+              }}
+            >
+              <Settings2 size={18} />
+              {t("Activities & reminders")}
+            </button>
+          )}
+          <button
+            className={carePausesOpen ? "nav-active" : ""}
+            onClick={() => {
+              setMobileSidebarOpen(false);
+              navigate(`/children/${child.id}/care-pauses`);
+            }}
+          >
+            <HeartPulse size={18} />
+            {t("Care pauses")}
+          </button>
+          {canManage && (
+            <button onClick={() => {
+              setMobileSidebarOpen(false);
+              setPanel("invite");
+            }}>
+              <Users size={18} />
+              {t("Invite caregiver")}
+            </button>
+          )}
+          <button
+            className={caregiversOpen ? "nav-active" : ""}
+            onClick={() => {
+              setMobileSidebarOpen(false);
+              navigate(`/children/${child.id}/caregivers`);
+            }}
+          >
+            <Users size={18} />
+            {t("Caregivers")}
+          </button>
+          <button onClick={() => {
+            setMobileSidebarOpen(false);
+            navigate("/children");
+          }}>
+            <Users size={18} />
+            {t("Children")}
+          </button>
+          <button onClick={() => {
+            setMobileSidebarOpen(false);
+            setHelpLegalOpen(true);
+          }}>
+            <CircleHelp size={18} />
+            {t("Help & legal")}
+          </button>
+          <LanguageControl
+            locale={user.locale}
+            label={t("Language")}
+            onClick={() => {
+              setMobileSidebarOpen(false);
+              setLanguageOpen(true);
+            }}
+          />
+          <button className="leave-space" onClick={() => {
+            setMobileSidebarOpen(false);
+            openLeave();
+          }}>
+            <UserMinus size={18} />
+            {t("Leave care space")}
+          </button>
+          <SidebarAccount
+            displayName={user.display_name}
+            settingsLabel={t("Settings")}
+            onSettings={() => navigate("/account/privacy")}
+            signOutLabel={t("Sign out")}
+            onSignOut={signOut}
+          />
+        </div>
+      </aside>
       {languageOpen && (
         <LanguagePicker
           locale={user.locale}
@@ -1555,16 +1727,17 @@ export default function App() {
           onSelect={setLocale}
         />
       )}
-      {selectedReminder && (
-        <ReminderDetailModal
-          reminder={selectedReminder}
-          activities={dash.activities}
-          locale={user.locale}
-          canManage={canManage}
-          onClose={() => setSelectedReminder(null)}
-          onSave={updateReminder}
-          onDelete={() => deleteReminder(selectedReminder)}
-        />
+      {helpLegalOpen && (
+        <ModalBackdrop onClose={() => setHelpLegalOpen(false)}>
+          <HelpLegalPanel
+            locale={locale}
+            onClose={() => setHelpLegalOpen(false)}
+            onNavigate={(path) => {
+              setHelpLegalOpen(false);
+              navigate(path);
+            }}
+          />
+        </ModalBackdrop>
       )}
       {logOpen && (
         <LogModal
@@ -1577,8 +1750,11 @@ export default function App() {
           note={note}
           createdBy={editingLog?.created_by}
           editable={!editingLog || canEditLog(editingLog)}
+          lockedActivityId={reminderActivityId}
           onClose={() => {
             setEditingLog(null);
+            setCompletingScheduleActivityId(null);
+            setReminderActivityId(null);
             setLogOpen(false);
           }}
           onActivity={setActivityId}
@@ -1594,18 +1770,11 @@ export default function App() {
         <ManageModal
           locale={user.locale}
           panel={panel}
-          activities={dash.activities}
           children={children}
           notes={notes}
           inviteUrl={inviteUrl}
           canManage={canManage}
           onClose={() => setPanel(null)}
-          onActivity={createActivity}
-          onUpdateActivity={updateActivity}
-          onArchive={archiveActivity}
-          onField={addField}
-          onReminder={remind}
-          onGap={gap}
           onInvite={invite}
           onNote={addNote}
           onChild={createChild}
@@ -1657,7 +1826,7 @@ function LeaveCareSpaceModal({
         : t("Leave care space");
   return (
     <ModalBackdrop onClose={onClose}>
-      <section className="log-modal leave-modal">
+      <section className="log-modal leave-modal" role="dialog" aria-modal="true" aria-label={t("Leave care space confirmation")}>
         <button
           className="close"
           aria-label={t("Close leave confirmation")}
@@ -1701,7 +1870,7 @@ function InvitationPreviewModal({
   }).format(new Date(invitation.created_at));
   return (
     <ModalBackdrop onClose={onClose}>
-      <section className="log-modal invitation-preview">
+      <section className="log-modal invitation-preview" role="dialog" aria-modal="true" aria-label={t("Join a child's care space")}>
         <button
           className="close"
           aria-label={t("Close invitation")}
@@ -1742,120 +1911,27 @@ function InvitationPreviewModal({
   );
 }
 
-function ReminderDetailModal({
-  reminder,
+function UpcomingList({
   activities,
   locale,
-  canManage,
-  onClose,
-  onSave,
-  onDelete,
-}: {
-  reminder: Reminder;
-  activities: Activity[];
-  locale: User["locale"];
-  canManage: boolean;
-  onClose: () => void;
-  onSave: (event: FormEvent<HTMLFormElement>) => void;
-  onDelete: () => void;
-}) {
-  const t = (text: string) => translate(locale, text);
-  const activity = activities.find((item) => item.id === reminder.activity_id);
-  const schedule =
-    reminder.kind === "one_time" && reminder.scheduled_for
-      ? new Intl.DateTimeFormat(locale === "he" ? "he-IL" : "en-US", {
-          dateStyle: "medium",
-          timeStyle: "short",
-        }).format(new Date(reminder.scheduled_for))
-      : `${t("Every")} ${Math.round((reminder.interval_minutes ?? 0) / 60)} ${t("hours after activity")}`;
-  const heading = (
-    <header className="reminder-detail-heading">
-      <h2>{reminder.title}</h2>
-      <button
-        type="button"
-        className="reminder-detail-close"
-        onClick={onClose}
-        aria-label={t("Close")}
-      >
-        <X size={22} />
-      </button>
-    </header>
-  );
-
-  return (
-    <ModalBackdrop onClose={onClose}>
-      <section className="log-modal reminder-detail-modal" role="dialog" aria-modal="true">
-        {canManage ? (
-          <form onSubmit={onSave}>
-            {heading}
-            <label>
-              {t("Title")}
-              <input name="title" defaultValue={reminder.title} required />
-            </label>
-            <label>
-              {t("Activity")}
-              <select name="activityId" defaultValue={reminder.activity_id ?? ""}>
-                <option value="">{t("None")}</option>
-                {activities.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {t(item.name)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <ReminderScheduleFields
-              locale={locale}
-              initialKind={reminder.kind}
-              initialIntervalHours={(reminder.interval_minutes ?? 180) / 60}
-              initialScheduledFor={reminder.scheduled_for}
-            />
-            <div className="modal-actions">
-              <button className="primary submit">{t("Save changes")}</button>
-              <button type="button" className="text-button danger" onClick={onDelete}>
-                {t("Delete")}
-              </button>
-            </div>
-          </form>
-        ) : (
-          <>
-            {heading}
-            <dl className="event-detail-list">
-              <div>
-                <dt>{t("Activity")}</dt>
-                <dd>{activity ? t(activity.name) : t("None")}</dd>
-              </div>
-              <div>
-                <dt>{t("Schedule")}</dt>
-                <dd>{schedule}</dd>
-              </div>
-            </dl>
-          </>
-        )}
-      </section>
-    </ModalBackdrop>
-  );
-}
-
-function UpcomingList({
-  reminders,
-  locale,
+  formatExpectedTime,
   canManage,
   onOpen,
-  onSelect,
   onComplete,
   onDelete,
   onLogActivity,
 }: {
-  reminders: Reminder[];
+  activities: Activity[];
   locale: User["locale"];
+  formatExpectedTime: (value: string | Date) => string;
   canManage: boolean;
   onOpen: () => void;
-  onSelect: (reminder: Reminder) => void;
-  onComplete: (reminder: Reminder) => void;
-  onDelete: (reminder: Reminder) => void;
+  onComplete: (activity: Activity) => void;
+  onDelete: (activity: Activity) => void;
   onLogActivity?: (activityId: string) => void;
 }) {
   const t = (text: string) => translate(locale, text);
+  const scheduledActivities = activities.filter((activity) => activity.schedule);
   return (
     <section className="upcoming-list" aria-label={t("Upcoming care")}>
       <div className="section-head upcoming-list-head">
@@ -1864,83 +1940,115 @@ function UpcomingList({
         </div>
         {canManage && (
           <button className="text-button" onClick={onOpen}>
-            {t("Manage reminders")} <Plus size={15} />
+            {t("Activities & reminders")} <Plus size={15} />
           </button>
         )}
       </div>
-      {reminders.length ? (
+      {scheduledActivities.length ? (
         <div className="upcoming-items">
-          {reminders.map((reminder) => (
-            <article
-              className="due-item due-item-open-detail"
-              key={reminder.id}
-              tabIndex={0}
-              role="button"
-              onClick={() => onSelect(reminder)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onSelect(reminder);
-                }
-              }}
-            >
-              <span className="due-icon">
-                {reminder.kind === "one_time" ? (
-                  <HeartPulse size={17} />
-                ) : (
-                  <Utensils size={17} />
-                )}
-              </span>
-              <div>
-                <h3>{reminder.title}</h3>
-                <p>
-                  {reminder.kind === "one_time" && reminder.scheduled_for
-                    ? clock(reminder.scheduled_for, locale)
-                    : `${t("Every")} ${Math.round((reminder.interval_minutes ?? 0) / 60)} ${t("hours after activity")}`}
-                </p>
-              </div>
+          {scheduledActivities.map((activity) => {
+            const schedule = activity.schedule!;
+            const description =
+              schedule.kind === "one_time" && schedule.scheduled_for
+                ? clock(schedule.scheduled_for, locale)
+                : !schedule.last_event_time
+                  ? t("Record the first care to set the next expected time.")
+                  : `${t("Next expected")}: ${formatExpectedTime(
+                      new Date(
+                        new Date(schedule.last_event_time).getTime() +
+                          (schedule.interval_minutes ?? 0) * 60_000,
+                      ),
+                    )}`;
+            const onPrimaryAction =
+              schedule.kind === "interval"
+                ? onLogActivity
+                  ? () => onLogActivity(activity.id)
+                  : undefined
+                : () => onComplete(activity);
+            const primaryActionLabel =
+              schedule.kind === "interval"
+                ? `${t("Log care")} ${t(activity.name)}`
+                : `${t("Mark complete")} ${t(activity.name)}`;
+            return (
+            <article className="due-item" key={activity.id}>
+              {onPrimaryAction ? (
+                <button
+                  className="due-item-open-detail"
+                  type="button"
+                  aria-label={primaryActionLabel}
+                  onClick={onPrimaryAction}
+                >
+                  <span
+                    className="due-icon"
+                    style={{
+                      background: activity.color,
+                      color: accessibleIconColor(activity.color),
+                    }}
+                  >
+                    <ActivityIcon kind={activity.kind} icon={activity.icon} />
+                  </span>
+                  <div>
+                    <p className="due-item-title">
+                      {t(activity.name)}
+                    </p>
+                    <p>{description}</p>
+                  </div>
+                </button>
+              ) : (
+                <>
+                  <span
+                    className="due-icon"
+                    style={{
+                      background: activity.color,
+                      color: accessibleIconColor(activity.color),
+                    }}
+                  >
+                    <ActivityIcon kind={activity.kind} icon={activity.icon} />
+                  </span>
+                  <div>
+                    <p className="due-item-title">
+                      {t(activity.name)}
+                    </p>
+                    <p>{description}</p>
+                  </div>
+                </>
+              )}
               <span className="due-actions">
-                {onLogActivity && reminder.activity_id && (
+                {schedule.kind === "interval" && onLogActivity && (
                   <button
                     className="due-log"
-                    aria-label={`${t("Log activity")} ${reminder.title}`}
-                    title={`${t("Log activity")} ${reminder.title}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onLogActivity(reminder.activity_id!);
-                    }}
+                    aria-label={`${t("Log care")} ${t(activity.name)}`}
+                    title={`${t("Log care")} ${t(activity.name)}`}
+                    onClick={() => onLogActivity(activity.id)}
                   >
                     <ClipboardPlus size={14} />
                   </button>
                 )}
-                <button
-                  className="check"
-                  aria-label={`${t("Mark complete")} ${reminder.title}`}
-                  title={`${t("Mark complete")} ${reminder.title}`}
-                  data-tooltip={t("Mark complete")}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onComplete(reminder);
-                  }}
-                >
-                  <Check size={13} />
-                </button>
+                {schedule.kind === "one_time" && (
+                  <button
+                    className="check"
+                    aria-label={`${t("Mark complete")} ${t(activity.name)}`}
+                    title={`${t("Mark complete")} ${t(activity.name)}`}
+                    data-tooltip={t("Mark complete")}
+                    onClick={() => onComplete(activity)}
+                  >
+                    <Check size={13} />
+                  </button>
+                )}
                 {canManage && (
                   <button
                     className="more"
-                    aria-label={`${t("Delete")} ${reminder.title}`}
-                    title={`${t("Delete")} ${reminder.title}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onDelete(reminder);
-                    }}
+                    aria-label={`${t("Delete")} ${t(activity.name)}`}
+                    title={`${t("Delete")} ${t(activity.name)}`}
+                    onClick={() => onDelete(activity)}
                   >
                     <Trash2 size={14} />
                   </button>
                 )}
               </span>
             </article>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <p className="upcoming-empty">
@@ -1961,6 +2069,7 @@ function LogModal({
   note,
   createdBy,
   editable,
+  lockedActivityId,
   editing,
   onClose,
   onActivity,
@@ -1979,6 +2088,7 @@ function LogModal({
   note: string;
   createdBy?: string;
   editable: boolean;
+  lockedActivityId: string | null;
   editing: boolean;
   onClose: () => void;
   onActivity: (id: string) => void;
@@ -1991,11 +2101,10 @@ function LogModal({
   const t = (text: string) => translate(locale, text);
   return (
     <ModalBackdrop onClose={onClose}>
-      <form className="log-modal" onSubmit={onSubmit}>
-        <button type="button" className="close" onClick={onClose}>
+      <form className="log-modal" role="dialog" aria-modal="true" aria-label={t(editing ? "Edit care record" : "What happened?")} onSubmit={onSubmit}>
+        <button type="button" className="close" aria-label={t("Close")} onClick={onClose}>
           <X size={20} />
         </button>
-        {!editing && <p className="eyebrow">{t("QUICK LOG")}</p>}
         <h2>{t(editing ? "Edit care record" : "What happened?")}</h2>
         {createdBy && (
           <div className="log-created-by">
@@ -2004,15 +2113,24 @@ function LogModal({
           </div>
         )}
         <div className="activity-picker">
-          {activities.map((item) => (
+          {activities
+            .filter((item) => !lockedActivityId || item.id === lockedActivityId)
+            .map((item) => (
             <button
               type="button"
               key={item.id}
               className={item.id === activity?.id ? "selected" : ""}
-              disabled={!editable}
+              disabled={!editable || Boolean(lockedActivityId)}
               onClick={() => onActivity(item.id)}
             >
-              <i style={{ background: item.color }}>{icon(item.kind)}</i>
+              <i
+                style={{
+                  background: item.color,
+                  color: accessibleIconColor(item.color),
+                }}
+              >
+                <ActivityIcon kind={item.kind} icon={item.icon} />
+              </i>
               {t(item.name)}
             </button>
           ))}
@@ -2027,7 +2145,7 @@ function LogModal({
             required
           />
         </label>
-        {activity?.kind === "feeding" ? (
+        {activity?.kind === "feeding" && (
           <fieldset className="feeding-portions">
             <legend>{t("Milk portions")}</legend>
             {portions.map((portion, index) => (
@@ -2035,7 +2153,7 @@ function LogModal({
                 <select
                   aria-label={t("Milk type")}
                   value={portion.kind}
-                  disabled={!editable}
+                  disabled={!editable || portion.deliveryMethod === "breastfeeding"}
                   onChange={(event) =>
                     onPortions(
                       portions.map((item, itemIndex) =>
@@ -2062,9 +2180,9 @@ function LogModal({
                       portions.map((item, itemIndex) =>
                         itemIndex === index
                           ? {
-                              ...item,
-                              deliveryMethod: event.target
-                                .value as FeedingPortion["delivery_method"],
+                                ...item,
+                                deliveryMethod: event.target.value as FeedingPortion["delivery_method"],
+                                kind: event.target.value === "breastfeeding" ? "breast_milk" : item.kind,
                             }
                           : item,
                       ),
@@ -2075,25 +2193,29 @@ function LogModal({
                   <option value="breastfeeding">{t("Breastfeeding")}</option>
                 </select>
                 <label>
-                  <span className="sr-only">{t("Amount in ml")}</span>
+                  <span className="sr-only">
+                    {portion.deliveryMethod === "breastfeeding" ? t("Duration in minutes") : t("Amount in ml")}
+                  </span>
                   <input
                     type="number"
-                    min="0.1"
-                    step="0.1"
+                    min={portion.deliveryMethod === "breastfeeding" ? "1" : "0.1"}
+                    step={portion.deliveryMethod === "breastfeeding" ? "1" : "0.1"}
                     required
-                    value={portion.amountMl}
+                    value={portion.deliveryMethod === "breastfeeding" ? portion.durationMinutes : portion.amountMl}
                     disabled={!editable}
                     onChange={(event) =>
                       onPortions(
                         portions.map((item, itemIndex) =>
                           itemIndex === index
-                            ? { ...item, amountMl: event.target.value }
+                            ? portion.deliveryMethod === "breastfeeding"
+                              ? { ...item, durationMinutes: event.target.value }
+                              : { ...item, amountMl: event.target.value }
                             : item,
                         ),
                       )
                     }
                   />
-                  <span className="field-unit">ml</span>
+                  <span className="field-unit">{portion.deliveryMethod === "breastfeeding" ? t("min") : t("ml")}</span>
                 </label>
                 {portions.length > 1 && (
                   <button
@@ -2119,30 +2241,33 @@ function LogModal({
               onClick={() =>
                 onPortions([
                   ...portions,
-                  { kind: "formula", deliveryMethod: "bottle", amountMl: "" },
+                  { kind: "formula", deliveryMethod: "bottle", amountMl: "", durationMinutes: "" },
                 ])
               }
             >
               <Plus size={15} /> {t("Add portion")}
             </button>
           </fieldset>
-        ) : (
-          activity?.fields.map((field) => (
+        )}
+        {activity?.fields.map((field) => (
             <label key={field.id}>
               {t(field.label)}
               {field.unit ? ` (${field.unit})` : ""}
               {field.field_type === "boolean" ? (
-                <input
-                  type="checkbox"
-                  checked={Boolean(values[field.field_key])}
-                  disabled={!editable}
-                  onChange={(event) =>
-                    onValues({
-                      ...values,
-                      [field.field_key]: event.target.checked,
-                    })
-                  }
-                />
+                <span className="boolean-field-input">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(values[field.field_key])}
+                    disabled={!editable}
+                    onChange={(event) =>
+                      onValues({
+                        ...values,
+                        [field.field_key]: event.target.checked,
+                      })
+                    }
+                  />
+                  <span>{t(values[field.field_key] ? field.boolean_true_label ?? "Yes" : field.boolean_false_label ?? "No")}</span>
+                </span>
               ) : field.field_type === "select" && field.options.length ? (
                 <select
                   value={String(values[field.field_key] ?? "")}
@@ -2177,8 +2302,7 @@ function LogModal({
                 />
               )}
             </label>
-          ))
-        )}
+        ))}
         <label>
           {t("Note")}
           <textarea
@@ -2203,13 +2327,18 @@ function HomeSidebar({
   onHome,
   onOpenLanguage,
   onSignOut,
+  onPrivacyData,
+  onNavigateLegal,
 }: {
   user: User;
   onHome: () => void;
   onOpenLanguage: () => void;
   onSignOut: () => void;
+  onPrivacyData: () => void;
+  onNavigateLegal: (path: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [helpLegalOpen, setHelpLegalOpen] = useState(false);
   usePageScrollLock(open);
   const close = () => setOpen(false);
   const t = (text: string) => translate(user.locale, text);
@@ -2228,8 +2357,8 @@ function HomeSidebar({
         aria-label={t("Close navigation")}
         onClick={close}
       />
-      <aside className={`home-sidebar ${open ? "open" : ""}`}>
-        <FeedmeBrand onClick={onHome} />
+      <div className={`home-sidebar ${open ? "open" : ""}`}>
+        <FeedmeBrand locale={user.locale} onClick={onHome} />
         <div className="sidebar-bottom">
           <LanguageControl
             locale={user.locale}
@@ -2239,13 +2368,40 @@ function HomeSidebar({
               onOpenLanguage();
             }}
           />
+          <button
+            className="home-help-legal"
+            onClick={() => {
+              close();
+              setHelpLegalOpen(true);
+            }}
+          >
+            <CircleHelp size={18} />
+            {t("Help & legal")}
+          </button>
           <SidebarAccount
             displayName={user.display_name}
+            settingsLabel={t("Settings")}
+            onSettings={() => {
+              close();
+              onPrivacyData();
+            }}
             signOutLabel={t("Sign out")}
             onSignOut={onSignOut}
           />
         </div>
-      </aside>
+      </div>
+      {helpLegalOpen && (
+        <ModalBackdrop onClose={() => setHelpLegalOpen(false)}>
+          <HelpLegalPanel
+            locale={user.locale}
+            onClose={() => setHelpLegalOpen(false)}
+            onNavigate={(path) => {
+              setHelpLegalOpen(false);
+              onNavigateLegal(path);
+            }}
+          />
+        </ModalBackdrop>
+      )}
     </>
   );
 }
@@ -2263,6 +2419,8 @@ function Home({
   onLocale,
   onSignOut,
   onHome,
+  onPrivacyData,
+  onNavigateLegal,
 }: {
   user: User;
   error: string;
@@ -2276,17 +2434,21 @@ function Home({
   onLocale: (locale: User["locale"]) => void;
   onSignOut: () => void;
   onHome: () => void;
+  onPrivacyData: () => void;
+  onNavigateLegal: (path: string) => void;
 }) {
   const t = (text: string) => translate(user.locale, text);
   return (
-    <main className="home-shell">
+    <div className="home-shell">
       <HomeSidebar
         user={user}
         onHome={onHome}
         onOpenLanguage={onOpenLanguage}
         onSignOut={onSignOut}
+        onPrivacyData={onPrivacyData}
+        onNavigateLegal={onNavigateLegal}
       />
-      <section className="empty-home">
+      <div className="empty-home">
         <p className="eyebrow">{t("YOUR FAMILY SPACE")}</p>
         <h1>
           {t("Everything starts when")}
@@ -2302,7 +2464,7 @@ function Home({
           <Plus size={18} />
           {t("Create child")}
         </button>
-      </section>
+      </div>
       {createChildOpen && (
         <CreateChildModal
           error={error}
@@ -2318,7 +2480,7 @@ function Home({
           onSelect={onLocale}
         />
       )}
-    </main>
+    </div>
   );
 }
 
@@ -2339,6 +2501,8 @@ function ChildrenHome({
   onLocale,
   onSignOut,
   onHome,
+  onPrivacyData,
+  onNavigateLegal,
 }: {
   user: User;
   children: Child[];
@@ -2356,18 +2520,22 @@ function ChildrenHome({
   onLocale: (locale: User["locale"]) => void;
   onSignOut: () => void;
   onHome: () => void;
+  onPrivacyData: () => void;
+  onNavigateLegal: (path: string) => void;
 }) {
   const [actionsFor, setActionsFor] = useState<string | null>(null);
   const t = (text: string) => translate(user.locale, text);
   return (
-    <main className="home-shell">
+    <div className="home-shell">
       <HomeSidebar
         user={user}
         onHome={onHome}
         onOpenLanguage={onOpenLanguage}
         onSignOut={onSignOut}
+        onPrivacyData={onPrivacyData}
+        onNavigateLegal={onNavigateLegal}
       />
-      <section className="children-home">
+      <div className="children-home">
         <div className="children-home-heading">
           <div>
             <p className="eyebrow">{t("YOUR FAMILY SPACE")}</p>
@@ -2417,6 +2585,7 @@ function ChildrenHome({
                 <div className="child-actions">
                   <button
                     className="more child-more"
+                    aria-label={`${t("Actions for")} ${item.name}`}
                     title={`${t("Actions for")} ${item.name}`}
                     onClick={() =>
                       setActionsFor(actionsFor === item.id ? null : item.id)
@@ -2450,7 +2619,7 @@ function ChildrenHome({
             </article>
           ))}
         </div>
-      </section>
+      </div>
       {createChildOpen && (
         <CreateChildModal
           error={error}
@@ -2466,25 +2635,18 @@ function ChildrenHome({
           onSelect={onLocale}
         />
       )}
-    </main>
+    </div>
   );
 }
 
 function ManageModal({
   locale,
   panel,
-  activities,
   children,
   notes,
   inviteUrl,
   canManage,
   onClose,
-  onActivity,
-  onUpdateActivity,
-  onArchive,
-  onField,
-  onReminder,
-  onGap,
   onInvite,
   onNote,
   onChild,
@@ -2492,18 +2654,11 @@ function ManageModal({
 }: {
   locale: User["locale"];
   panel: Panel;
-  activities: Activity[];
   children: Child[];
   notes: Note[];
   inviteUrl: string;
   canManage: boolean;
   onClose: () => void;
-  onActivity: (event: FormEvent<HTMLFormElement>) => void;
-  onUpdateActivity: (event: FormEvent<HTMLFormElement>) => void;
-  onArchive: (id: string) => void;
-  onField: (event: FormEvent<HTMLFormElement>) => void;
-  onReminder: (event: FormEvent<HTMLFormElement>) => void;
-  onGap: (event: FormEvent<HTMLFormElement>) => void;
   onInvite: (event: FormEvent<HTMLFormElement>) => void;
   onNote: (event: FormEvent<HTMLFormElement>) => void;
   onChild: (event: FormEvent<HTMLFormElement>) => void;
@@ -2511,144 +2666,12 @@ function ManageModal({
 }) {
   const t = (text: string) => translate(locale, text);
   const [inviteMethod, setInviteMethod] = useState<"email" | "link">("email");
-  const fields = (
-    <>
-      <label>
-        {t("Field type")}
-        <select name="type">
-          <option value="number">{t("Number")}</option>
-          <option value="text">{t("Text")}</option>
-          <option value="boolean">{t("Yes / no")}</option>
-          <option value="select">{t("Single select")}</option>
-          <option value="duration">{t("Duration")}</option>
-        </select>
-      </label>
-      <label>
-        {t("Unit")}
-        <input name="unit" placeholder={t("e.g. ml, °C")} />
-      </label>
-      <label>
-        {t("Options for a select")}
-        <input name="options" placeholder={t("e.g. left, right")} />
-      </label>
-    </>
-  );
   return (
     <ModalBackdrop onClose={onClose}>
-      <section className="log-modal manager">
-        <button className="close" onClick={onClose}>
+      <section className="log-modal manager" role="dialog" aria-modal="true" aria-label={t("Manage care") }>
+        <button className="close" aria-label={t("Close")} onClick={onClose}>
           <X size={20} />
         </button>
-        {panel === "activity" && (
-          <>
-            <form onSubmit={onActivity}>
-              <h2>{t("Custom activity")}</h2>
-              <label>
-                {t("Name")}
-                <input name="name" required placeholder={t("e.g. Bath")} />
-              </label>
-              <label>
-                {t("First field (optional)")}
-                <input name="field" placeholder={t("e.g. Temperature")} />
-              </label>
-              {fields}
-              <button className="primary submit">{t("Create activity")}</button>
-            </form>
-            <form onSubmit={onField}>
-              <h3>{t("Add a field")}</h3>
-              <label>
-                {t("Activity")}
-                <select name="activityId">
-                  {activities.map((activity) => (
-                    <option key={activity.id} value={activity.id}>
-                      {t(activity.name)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                {t("Field name")}
-                <input name="field" required />
-              </label>
-              {fields}
-              <button className="text-button">{t("Add field")}</button>
-            </form>
-            {canManage && (
-              <div className="note-list">
-                {activities.map((activity) => (
-                  <article key={activity.id}>
-                    <form onSubmit={onUpdateActivity}>
-                      <input type="hidden" name="activityId" value={activity.id} />
-                      <label>
-                        {t("Name")}
-                        <input name="name" defaultValue={activity.name} required />
-                      </label>
-                      <label>
-                        {t("Color")}
-                        <input name="color" type="color" defaultValue={activity.color} />
-                      </label>
-                      <div className="modal-actions">
-                        <button className="text-button">{t("Save changes")}</button>
-                        <button
-                          className="text-button danger"
-                          type="button"
-                          onClick={() => onArchive(activity.id)}
-                        >
-                          {t("Remove activity")}
-                        </button>
-                      </div>
-                    </form>
-                  </article>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-        {panel === "reminder" && (
-          <form onSubmit={onReminder}>
-            <h2>{t("Add reminder")}</h2>
-            <label>
-              {t("Title")}
-              <input name="title" required />
-            </label>
-            <label>
-              {t("Activity")}
-              <select name="activityId">
-                <option value="">{t("None")}</option>
-                {activities.map((activity) => (
-                  <option key={activity.id} value={activity.id}>
-                    {t(activity.name)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <ReminderScheduleFields locale={locale} />
-            <button className="primary submit">{t("Save reminder")}</button>
-          </form>
-        )}
-        {panel === "gap" && (
-          <form onSubmit={onGap}>
-            <h2>{t("Declare care gap")}</h2>
-            <p className="time-hint">
-              {t(
-                "Logs in or across this range do not affect interval analytics.",
-              )}
-            </p>
-            <label>
-              {t("Start")}
-              <input name="start" type="datetime-local" required />
-            </label>
-            <label>
-              {t("End")}
-              <input name="end" type="datetime-local" required />
-            </label>
-            <label>
-              {t("Reason")}
-              <input name="reason" placeholder={t("Shabbat")} />
-            </label>
-            <button className="primary submit">{t("Declare gap")}</button>
-          </form>
-        )}
         {panel === "invite" && (
           <form onSubmit={onInvite}>
             <h2>{t("Invite caregiver")}</h2>

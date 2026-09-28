@@ -20,7 +20,7 @@ services:
     build:
       context: .
       dockerfile: server/Dockerfile
-    command: sh -c "node --import tsx server/migrate.ts && npx nodemon --legacy-watch --watch server --ext ts,json --exec 'node --inspect=0.0.0.0:9229 --import tsx server/index.ts'"
+    command: npx nodemon --legacy-watch --watch server --ext ts,json,sql --exec 'sh -c "node --import tsx server/migrate.ts && node --inspect=0.0.0.0:9229 --import tsx server/index.ts"'
     environment:
       NODE_ENV: development
       DATABASE_URL: postgres://${POSTGRES_USER:-nurture}:${POSTGRES_PASSWORD:-nurture_local_only}@db:5432/${POSTGRES_DB:-nurture}

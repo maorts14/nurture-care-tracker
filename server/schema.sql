@@ -31,6 +31,14 @@ CREATE TABLE child_membership (
   PRIMARY KEY (child_id, user_id)
 );
 
+CREATE TABLE child_insight_preference (
+  child_id UUID NOT NULL REFERENCES child(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES app_user(id) ON DELETE CASCADE,
+  activity_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (child_id, user_id)
+);
+
 CREATE TABLE child_invitation (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   child_id UUID NOT NULL REFERENCES child(id) ON DELETE CASCADE,
@@ -49,6 +57,7 @@ CREATE TABLE activity_definition (
   name TEXT NOT NULL,
   kind activity_kind NOT NULL DEFAULT 'custom',
   color TEXT NOT NULL,
+  icon TEXT NOT NULL DEFAULT 'heart-pulse',
   archived_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -61,9 +70,26 @@ CREATE TABLE activity_field_definition (
   field_type TEXT NOT NULL CHECK (field_type IN ('text', 'number', 'boolean', 'select', 'duration')),
   unit TEXT,
   options JSONB NOT NULL DEFAULT '[]',
+  boolean_true_label TEXT,
+  boolean_false_label TEXT,
   dashboard_metrics JSONB NOT NULL DEFAULT '[]',
   archived_at TIMESTAMPTZ,
   UNIQUE (activity_id, field_key)
+);
+
+CREATE TABLE activity_schedule (
+  activity_id UUID PRIMARY KEY REFERENCES activity_definition(id) ON DELETE CASCADE,
+  kind reminder_kind NOT NULL,
+  interval_minutes INTEGER CHECK (interval_minutes > 0),
+  scheduled_for TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (
+    (kind = 'interval' AND interval_minutes IS NOT NULL AND scheduled_for IS NULL AND completed_at IS NULL)
+    OR
+    (kind = 'one_time' AND interval_minutes IS NULL AND scheduled_for IS NOT NULL)
+  )
 );
 
 CREATE TABLE care_gap (
@@ -72,7 +98,8 @@ CREATE TABLE care_gap (
   starts_at TIMESTAMPTZ NOT NULL,
   ends_at TIMESTAMPTZ NOT NULL CHECK (ends_at > starts_at),
   reason TEXT,
-  created_by UUID NOT NULL REFERENCES app_user(id),
+  include_in_averages BOOLEAN NOT NULL DEFAULT FALSE,
+  created_by UUID REFERENCES app_user(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -84,7 +111,7 @@ CREATE TABLE activity_log (
   event_timezone TEXT NOT NULL,
   field_values JSONB NOT NULL DEFAULT '{}',
   note TEXT,
-  created_by UUID NOT NULL REFERENCES app_user(id),
+  created_by UUID REFERENCES app_user(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX activity_log_timeline_idx ON activity_log (child_id, event_time DESC);
@@ -95,9 +122,14 @@ CREATE TABLE feeding_portion (
   log_id UUID NOT NULL REFERENCES activity_log(id) ON DELETE CASCADE,
   kind TEXT NOT NULL CHECK (kind IN ('breast_milk', 'formula')),
   delivery_method TEXT NOT NULL CHECK (delivery_method IN ('bottle', 'breastfeeding')),
-  amount_ml NUMERIC NOT NULL CHECK (amount_ml > 0),
+  amount_ml NUMERIC,
+  duration_minutes NUMERIC,
   position SMALLINT NOT NULL CHECK (position >= 0),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (
+    (delivery_method = 'bottle' AND amount_ml > 0 AND duration_minutes IS NULL)
+    OR (delivery_method = 'breastfeeding' AND kind = 'breast_milk' AND amount_ml IS NULL AND duration_minutes > 0)
+  ),
   UNIQUE (log_id, position)
 );
 CREATE INDEX feeding_portion_log_idx ON feeding_portion (log_id, position);
@@ -107,18 +139,6 @@ CREATE TABLE activity_measurement (
   field_id UUID NOT NULL REFERENCES activity_field_definition(id) ON DELETE CASCADE,
   value_numeric NUMERIC NOT NULL,
   PRIMARY KEY (log_id, field_id)
-);
-
-CREATE TABLE reminder (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  child_id UUID NOT NULL REFERENCES child(id) ON DELETE CASCADE,
-  activity_id UUID REFERENCES activity_definition(id) ON DELETE SET NULL,
-  kind reminder_kind NOT NULL,
-  interval_minutes INTEGER CHECK (interval_minutes > 0),
-  scheduled_for TIMESTAMPTZ,
-  title TEXT NOT NULL,
-  completed_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE child_note (

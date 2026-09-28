@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ChevronDown, FileDown, Menu, Settings2, X } from "lucide-react";
 import { ModalBackdrop } from "./components/ModalBackdrop";
 import { TimelineBackButton } from "./components/TimelineBackButton";
@@ -7,15 +7,19 @@ import { Locale, translate as tr } from "./i18n";
 type Metrics = {
   count: number;
   portion_count: number;
+  bottle_portion_count: number;
+  breastfeeding_portion_count: number;
   total_amount_ml: number;
+  total_breastfeeding_minutes: number;
   average_amount_ml: number | null;
+  average_breastfeeding_minutes: number | null;
 };
 type ActivityStat = {
   activity_id: string;
   average: Metrics;
   calendar_day: Metrics;
   last_24_hours: Metrics;
-  history: Array<Metrics & { date: string }>;
+  history: Array<Metrics & { date: string; excluded_from_average: boolean }>;
 };
 type Activity = {
   id: string;
@@ -52,17 +56,53 @@ function MetricsGrid({
   feeding,
   t,
   compact = false,
+  onScroll,
+  scrollRef,
 }: {
   metrics: Metrics;
   feeding: boolean;
   t: (text: string) => string;
   compact?: boolean;
+  onScroll?: (event: React.UIEvent<HTMLDivElement>) => void;
+  scrollRef?: (element: HTMLDivElement | null) => void;
 }) {
+  const drag = useRef<{ pointerId: number; startX: number; startScrollLeft: number } | null>(null);
+
+  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!feeding || event.pointerType === "touch") return;
+    drag.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startScrollLeft: event.currentTarget.scrollLeft,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+
+  const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!drag.current || drag.current.pointerId !== event.pointerId) return;
+    event.preventDefault();
+    event.currentTarget.scrollLeft = drag.current.startScrollLeft - (event.clientX - drag.current.startX);
+  };
+
+  const onPointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!drag.current || drag.current.pointerId !== event.pointerId) return;
+    drag.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
   return (
     <div
       className={`metric-grid ${
         feeding ? "analytics-feeding-metrics" : "analytics-count-metrics"
       } ${compact ? "analytics-compact-metrics" : ""}`}
+      ref={scrollRef}
+      onScroll={onScroll}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerEnd}
+      onPointerCancel={onPointerEnd}
     >
       <div>
         <p>{t(feeding ? "Feedings" : "Records")}</p>
@@ -75,9 +115,17 @@ function MetricsGrid({
             <strong>{pretty(metrics.portion_count)}</strong>
           </div>
           <div>
+            <p>{t("Bottle portions")}</p>
+            <strong>{pretty(metrics.bottle_portion_count)}</strong>
+          </div>
+          <div>
+            <p>{t("Breastfeeding portions")}</p>
+            <strong>{pretty(metrics.breastfeeding_portion_count)}</strong>
+          </div>
+          <div>
             <p>{t("Total milk")}</p>
             <strong>
-              <bdi>{pretty(metrics.total_amount_ml)} ml</bdi>
+              {metrics.total_amount_ml > 0 ? <bdi>{pretty(metrics.total_amount_ml)} ml</bdi> : "—"}
             </strong>
           </div>
           <div>
@@ -87,6 +135,22 @@ function MetricsGrid({
                 "—"
               ) : (
                 <bdi>{pretty(metrics.average_amount_ml)} ml</bdi>
+              )}
+            </strong>
+          </div>
+          <div>
+            <p>{t("Total breastfeeding time")}</p>
+            <strong>
+              {metrics.total_breastfeeding_minutes > 0 ? <bdi>{pretty(metrics.total_breastfeeding_minutes)} {t("min")}</bdi> : "—"}
+            </strong>
+          </div>
+          <div>
+            <p>{t("Average breastfeeding time")}</p>
+            <strong>
+              {metrics.average_breastfeeding_minutes === null ? (
+                "—"
+              ) : (
+                <bdi>{pretty(metrics.average_breastfeeding_minutes)} {t("min")}</bdi>
               )}
             </strong>
           </div>
@@ -123,6 +187,18 @@ export function AnalyticsView({
   const [includeHistory, setIncludeHistory] = useState(false);
   const [historyStart, setHistoryStart] = useState(() => dateInputValue(new Date()));
   const [historyEnd, setHistoryEnd] = useState(() => dateInputValue(new Date()));
+  const historyMetricRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const syncingHistoryMetrics = useRef(false);
+  const syncHistoryMetrics = (event: React.UIEvent<HTMLDivElement>) => {
+    if (syncingHistoryMetrics.current) return;
+    syncingHistoryMetrics.current = true;
+    for (const metricStrip of historyMetricRefs.current) {
+      if (metricStrip && metricStrip !== event.currentTarget) {
+        metricStrip.scrollLeft = event.currentTarget.scrollLeft;
+      }
+    }
+    syncingHistoryMetrics.current = false;
+  };
   const t = (text: string) => tr(locale, text);
   const activityById = new Map(
     dashboard.activities.map((activity) => [activity.id, activity]),
@@ -283,25 +359,40 @@ export function AnalyticsView({
                 </summary>
                 <div className="analytics-history-list">
                   {stat.history.length ? (
-                    stat.history.map((day) => (
+                    stat.history.map((day, index) => (
                       <section className="analytics-history-day" key={day.date}>
-                        <time dateTime={day.date}>
-                          <span>
-                            {weekdayFormatter.format(
-                              new Date(`${day.date}T12:00:00`),
-                            )}
-                          </span>
-                          <span>
-                            {calendarDateFormatter.format(
-                              new Date(`${day.date}T12:00:00`),
-                            )}
-                          </span>
-                        </time>
+                        <div className="analytics-history-day-date">
+                          <time dateTime={day.date}>
+                            <span>
+                              {weekdayFormatter.format(
+                                new Date(`${day.date}T12:00:00`),
+                              )}
+                            </span>
+                            <span>
+                              {calendarDateFormatter.format(
+                                new Date(`${day.date}T12:00:00`),
+                              )}
+                            </span>
+                          </time>
+                          {day.excluded_from_average && (
+                            <small className="analytics-excluded-day">
+                              {t("Excluded from average")}
+                            </small>
+                          )}
+                        </div>
                         <MetricsGrid
                           metrics={day}
                           feeding={feeding}
                           t={t}
                           compact
+                          onScroll={feeding ? syncHistoryMetrics : undefined}
+                          scrollRef={
+                            feeding
+                              ? (element) => {
+                                  historyMetricRefs.current[index] = element;
+                                }
+                              : undefined
+                          }
                         />
                       </section>
                     ))
@@ -318,6 +409,9 @@ export function AnalyticsView({
         <ModalBackdrop onClose={() => setSettingsOpen(false)}>
           <form
             className="log-modal insights-settings-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("Insights settings")}
             onSubmit={async (event) => {
               event.preventDefault();
               await onSaveInsightActivities(settingsActivityIds);
@@ -337,6 +431,7 @@ export function AnalyticsView({
             </div>
             <p>{t("Choose activities to show in Insights.")}</p>
             <fieldset className="insights-activity-options">
+              <legend>{t("Activity")}</legend>
               {dashboard.activities.map((activity) => (
                 <label key={activity.id}>
                   <input
@@ -364,6 +459,9 @@ export function AnalyticsView({
         <ModalBackdrop onClose={() => setExportOpen(false)}>
           <form
             className="log-modal insights-settings-modal insights-export-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("Export insights")}
             onSubmit={(event) => {
               event.preventDefault();
               exportReport();

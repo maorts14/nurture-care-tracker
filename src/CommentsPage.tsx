@@ -46,7 +46,7 @@ export function CommentsPage({
 }: Props) {
   const t = (text: string) => translate(locale, text);
   return (
-    <main className="detail-page">
+    <div className="detail-page">
       <DetailPageHeader
         title={t(item.activity_name)}
         locale={locale}
@@ -104,6 +104,6 @@ export function CommentsPage({
           )}
         </div>
       )}
-    </main>
+    </div>
   );
 }

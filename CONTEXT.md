@@ -4,9 +4,25 @@
 
 A child profile shared by its members.
 
+## Care activity
+
+A named type of care or event for one child, such as Feeding, Diaper change, Doctor appointment, Medication, or Bath. A care activity may have fields and may optionally have one schedule.
+
+## Activity schedule
+
+An optional timing rule owned by one care activity. An activity without a schedule has no reminder. A schedule, once created, is either recurring after the most recent care session or one-time at a specific date and time.
+
+## Scheduled event
+
+A one-time activity schedule. Completing a scheduled event creates a care session for its activity and completes that schedule.
+
 ## Care session
 
 One occurrence of care recorded at a specific time. A feeding is a care session, regardless of how many milk portions it contains.
+
+## Care pause
+
+A declared interval when the family is not tracking care. It always excludes affected event-to-event timing intervals. By default, every local calendar day touched by a care pause is excluded from Insights averages; a caregiver may explicitly include those affected days when creating or editing the pause.
 
 ## Feeding portion
 

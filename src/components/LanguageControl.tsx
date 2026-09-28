@@ -15,9 +15,9 @@ export function LanguageControl({
 }: LanguageControlProps) {
   const languageName = locale === "he" ? "עברית" : "English";
   return (
-    <button className="language-button" onClick={onClick}>
-      <Languages size={18} />
-      {label}: <span dir={locale === "he" ? "rtl" : "ltr"}>{languageName}</span>
+    <button className="language-button" onClick={onClick} aria-label={label}>
+      <Languages size={18} aria-hidden="true" />
+      <span dir={locale === "he" ? "rtl" : "ltr"}>{languageName}</span>
     </button>
   );
 }

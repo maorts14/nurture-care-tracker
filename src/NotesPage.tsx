@@ -33,7 +33,7 @@ export function NotesPage({
 }: Props) {
   const t = (text: string) => translate(locale, text);
   return (
-    <main className="detail-page">
+    <div className="detail-page">
       <DetailPageHeader
         title={t("Notes")}
         locale={locale}
@@ -78,6 +78,6 @@ export function NotesPage({
           </article>
         ))}
       </section>
-    </main>
+    </div>
   );
 }

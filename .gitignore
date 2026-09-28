@@ -1,5 +1,7 @@
 node_modules/
 dist/
+playwright-report/
+test-results/
 .env
 .env.*
 !.env.example
@@ -8,3 +10,4 @@ npm-debug.log*
 .DS_Store
 .codex-remote-attachments/
 LOCAL_VPS_DEPLOYMENT.md
+.vscode/
