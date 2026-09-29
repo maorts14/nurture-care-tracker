@@ -38,7 +38,7 @@ const pageByPath: Record<Exclude<PublicPage, "landing">, { eyebrow?: string; tit
       ["Why we use it", "We use this information to sign you in, show the shared timeline, run reminders and insights, and keep the service secure. We do not sell care information, show ads, or use tracking analytics."],
       ["Your controls", "In Privacy & data, you can download a copy of your account data or permanently delete your account. Deleting an account removes its profile, notes, comments, and invitations. Shared care records remain without your identity; a child space you own alone is deleted."],
       ["Storage and backups", "Data is stored in a private database on our server. We create encrypted daily database recovery copies and retain them for up to 14 days. We also use server-level recovery backups provided by our hosting provider. When information is deleted from the live service, it may remain in recovery copies until their applicable retention periods expire. Access to production systems and backups is restricted."],
-      ["Cookies and security", "Feedme uses one essential, signed-in session cookie. It is not used for advertising or tracking. Connections use HTTPS, passwords are stored as hashes, and the database is not directly public on the internet."],
+      ["Cookies and security", "Feedme uses one essential, signed-in session cookie and browser local storage to remember your language choice. Neither is used for advertising or tracking. We do not currently use optional analytics or advertising cookies, so there are no cookie choices to manage. Connections use HTTPS, passwords are stored as hashes, and the database is not directly public on the internet."],
     ],
   },
   terms: {
@@ -70,8 +70,8 @@ const pageByPath: Record<Exclude<PublicPage, "landing">, { eyebrow?: string; tit
     intro: "You can contact us about anything.",
     sections: [
       ["Product support", "Get help using shared timelines, activities, reminders, child spaces and caregiver roles."],
-      ["Privacy requests", "Request access, export, correction or deletion through the future Privacy & data area or the published privacy contact."],
-      ["Security reports", "Use the future security contact for responsibly reporting a suspected vulnerability or incident."],
+      ["Privacy requests", "Request access, export, correction or deletion through Privacy & data or by contacting the Feedme team."],
+      ["Security reports", "Report a suspected vulnerability or incident to the Feedme team through this contact route."],
     ],
   },
 };
@@ -96,7 +96,7 @@ const hebrewPageByPath: typeof pageByPath = {
       ["למה אנחנו משתמשים במידע", "המידע משמש להתחברות, להצגת ציר הזמן המשותף, להפעלת תזכורות ותובנות ולשמירה על אבטחת השירות. אנחנו לא מוכרים מידע על טיפול, לא מציגים פרסומות ולא משתמשים בכלי מעקב אנליטיים."],
       ["השליטה שלכם", "באזור פרטיות ונתונים אפשר להוריד עותק של נתוני החשבון או למחוק את החשבון לצמיתות. מחיקת חשבון מסירה את הפרופיל, ההערות, התגובות וההזמנות שלו. רשומות טיפול משותפות נשארות בלי הזהות שלכם; מרחב ילד שבבעלותכם בלבד נמחק."],
       ["אחסון וגיבויים", "המידע נשמר במסד נתונים פרטי בשרת שלנו. אנחנו שומרים עותקי שחזור יומיים ל-14 ימים. מידע שנמחק עשוי להישאר בעותק שחזור עד שתוקפו יפוג. הגיבויים מוגנים באמצעות בקרות גישה לשרת, אך עדיין אינם מוצפנים בנפרד."],
-      ["עוגיות ואבטחה", "Feedme משתמשת בעוגיית התחברות חיונית אחת. היא לא משמשת לפרסום או למעקב. החיבור מוצפן ב-HTTPS, סיסמאות נשמרות בצורה מוצפנת ומסד הנתונים אינו פתוח ישירות לאינטרנט."],
+      ["עוגיות ואבטחה", "Feedme משתמשת בעוגיית התחברות חיונית ובאחסון מקומי בדפדפן כדי לזכור את בחירת השפה. אף אחד מהם אינו משמש לפרסום או למעקב. אנחנו לא משתמשים כרגע בעוגיות אופציונליות לניתוח נתונים או לפרסום, ולכן אין בחירות עוגיות לניהול. החיבור מוצפן ב-HTTPS, סיסמאות נשמרות בצורה מוצפנת ומסד הנתונים אינו פתוח ישירות לאינטרנט."],
     ],
   },
   terms: {
@@ -128,8 +128,8 @@ const hebrewPageByPath: typeof pageByPath = {
     intro: "אתם יכולים לפנות אלינו לכל נושא.",
     sections: [
       ["תמיכה במוצר", "עזרה בשימוש בציר זמן משותף, פעילויות, תזכורות, מרחבי ילדים ותפקידי מטפלים."],
-      ["בקשות פרטיות", "בקשת גישה, ייצוא, תיקון או מחיקה תתאפשר מאזור פרטיות ומידע העתידי או דרך איש הקשר לפרטיות שיפורסם."],
-      ["דיווחי אבטחה", "איש קשר ייעודי לאבטחה יפורסם לצורך דיווח אחראי על חולשה או אירוע חשוד."],
+      ["בקשות פרטיות", "אפשר לבקש גישה, ייצוא, תיקון או מחיקה דרך פרטיות ונתונים או בפנייה לצוות Feedme."],
+      ["דיווחי אבטחה", "אפשר לדווח לצוות Feedme דרך ערוץ יצירת קשר זה על חולשה או אירוע חשוד."],
     ],
   },
 };

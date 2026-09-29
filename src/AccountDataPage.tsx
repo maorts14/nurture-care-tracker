@@ -96,9 +96,9 @@ export function AccountDataPage({
         <article className="account-data-card account-data-note">
           <LockKeyhole size={22} />
           <h2>{t("Need help with a privacy request?")}</h2>
-          <p>{t("The public Privacy page explains the controls that will be available at launch.")}</p>
+          <p>{t("The public Privacy page explains these controls and how to contact the Feedme team.")}</p>
           <button className="text-button" onClick={() => window.location.assign("/privacy")}>
-            {t("Read privacy information")}
+            {t("Read privacy and cookie information")}
           </button>
         </article>
       </section>
